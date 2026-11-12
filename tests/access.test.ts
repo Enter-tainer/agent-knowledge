@@ -104,6 +104,37 @@ describe('accessGuard（Hono + @hono/cloudflare-access）', () => {
     expect(((await res.json()) as { email: string }).email).toBe('me@example.com');
   });
 
+  it('ACCESS_TEAM_DOMAIN 允许完整域名（自动剥离 .cloudflareaccess.com）', async () => {
+    const team = nextTeam();
+    const { privateKey, publicJwk } = await keyPair();
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return new Response(JSON.stringify({ keys: [publicJwk] }), {
+        status: 200,
+        headers: { 'cache-control': 'max-age=60' },
+      });
+    });
+    const app = makeApp();
+    const token = await signJwt(privateKey, {
+      aud: 'test-aud',
+      iss: `https://${team}.cloudflareaccess.com`,
+      exp: now() + 300,
+      iat: now(),
+    });
+    const res = await app.request(
+      'https://kb.example.com/api/ping',
+      { headers: { 'cf-access-jwt-assertion': token } },
+      {
+        DB: {} as D1Database,
+        ACCESS_TEAM_DOMAIN: `${team}.cloudflareaccess.com`,
+        ACCESS_AUD: 'test-aud',
+      } as Env,
+    );
+    expect(res.status).toBe(200);
+    expect(urls[0]).toBe(`https://${team}.cloudflareaccess.com/cdn-cgi/access/certs`);
+  });
+
   it('过期 token → 401', async () => {
     const team = nextTeam();
     const { privateKey, publicJwk } = await keyPair();

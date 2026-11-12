@@ -23,7 +23,87 @@ import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { setDefaultResultOrder } from 'node:dns';
+import { request as httpRequest } from 'node:http';
+import { request as httpsRequest } from 'node:https';
 import { dirname, resolve } from 'node:path';
+
+// 国内网络里 Cloudflare 域名的 AAAA 有时会黑洞：优先 IPv4，避免 Node fetch 卡 10s+ 超时
+try {
+  setDefaultResultOrder('ipv4first');
+} catch {
+  /* 老 Node 忽略 */
+}
+
+/** 用 node:https 而不是 fetch：本机到 Cloudflare 的 fetch 偶发连接超时，https+IPv4 稳定得多。 */
+function rawRequest(url, init, timeoutMs = 30_000) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const mod = u.protocol === 'http:' ? httpRequest : httpsRequest;
+    const req = mod(
+      u,
+      {
+        method: init.method ?? 'GET',
+        headers: init.headers ?? {},
+        family: 4,
+        timeout: timeoutMs,
+      },
+      (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => (body += chunk));
+        res.on('end', () =>
+          resolve({
+            status: res.statusCode ?? 0,
+            statusText: res.statusMessage ?? '',
+            ok: (res.statusCode ?? 0) >= 200 && (res.statusCode ?? 0) < 300,
+            headers: {
+              get: (name) => {
+                const v = res.headers[String(name).toLowerCase()];
+                return Array.isArray(v) ? v.join(', ') : (v ?? null);
+              },
+            },
+            text: async () => body,
+            json: async () => JSON.parse(body),
+          }),
+        );
+      },
+    );
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+    if (init.body != null) req.write(String(init.body));
+    req.end();
+  });
+}
+
+/** 请求 + 超时 + 重试 + 手动跳转（发现端点偶发连接超时）。 */
+async function request(url, init = {}, label = '请求', attempts = 3) {
+  let lastErr;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      let current = url;
+      let res = await rawRequest(current, init);
+      if (init.redirect !== 'manual') {
+        let hops = 0;
+        while ([301, 302, 303, 307, 308].includes(res.status) && hops++ < 5) {
+          const loc = res.headers.get('location');
+          if (!loc) break;
+          current = new URL(loc, current).toString();
+          const method = init.method ?? 'GET';
+          const nextMethod = res.status === 303 || ([301, 302].includes(res.status) && method === 'GET') ? 'GET' : method;
+          res = await rawRequest(current, { ...init, method: nextMethod, body: nextMethod === 'GET' ? undefined : init.body });
+        }
+      }
+      return res;
+    } catch (err) {
+      lastErr = err;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 500 * (i + 1)));
+    }
+  }
+  throw Object.assign(new Error(`${label} 连接失败：${lastErr?.cause?.code ?? lastErr?.message}`), {
+    cause: lastErr?.cause,
+  });
+}
 
 const args = process.argv.slice(2);
 const opts = parseOpts(args);
@@ -82,7 +162,7 @@ function saveStore(store) {
 async function jsonFetch(url, init, label) {
   let res;
   try {
-    res = await fetch(url, init);
+    res = await request(url, init, label);
   } catch (err) {
     die(`${label} 请求失败：${err.cause?.code ?? err.message}\n  ${url}`);
   }
@@ -101,8 +181,10 @@ async function jsonFetch(url, init, label) {
 
 /** 探测受保护资源，返回 { resourceMetadataUrl, resource, authorizationServer }。 */
 async function discover(base) {
-  const probeUrl = `${base}/api/health`;
-  const probe = await fetch(probeUrl, { headers: { accept: 'application/json' }, redirect: 'manual' }).catch((err) =>
+  // 默认探根路径（Access 对所有路径都会返回 401/302）；某些站点的 /api/health 走得慢
+  const probePath = String(opts['probe-path'] ?? '/');
+  const probeUrl = `${base}${probePath.startsWith('/') ? '' : '/'}${probePath}`;
+  const probe = await request(probeUrl, { headers: { accept: 'application/json' }, redirect: 'manual' }, '探测受保护资源').catch((err) =>
     die(`无法连接 ${probeUrl}：${err.cause?.code ?? err.message}`),
   );
 
@@ -172,7 +254,7 @@ async function registerClient(asMeta, redirectUri, resource) {
   ];
   let lastError = '';
   for (const body of attempts) {
-    const res = await fetch(asMeta.registration_endpoint, {
+    const res = await request(asMeta.registration_endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify(body),
@@ -256,7 +338,13 @@ function waitForCode(server, expectedState, timeoutMs) {
 }
 
 function openBrowser(url) {
-  const cmd = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]] : [process.platform === 'darwin' ? 'open' : 'xdg-open', [url]];
+  // Windows 上不能用 `cmd /c start <url>`：URL 里的 `&` 会被 cmd 当成命令分隔符，
+  // 授权参数（resource/state）会被截断 → Cloudflare 报 invalid_target: No resource parameter found。
+  // rundll32 接收的是单独一个 argv，不经过 cmd 解析，安全。
+  const cmd =
+    process.platform === 'win32'
+      ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
+      : [process.platform === 'darwin' ? 'open' : 'xdg-open', [url]];
   try {
     execFile(cmd[0], cmd[1], { windowsHide: true }, () => undefined);
   } catch {
@@ -311,9 +399,12 @@ async function login(base) {
   const asMeta = await discoverAs(disc.authorizationServer);
 
   const { server, port } = await listenOnFreePort(Number(opts.port ?? 8400));
-  const redirectUri = `http://127.0.0.1:${port}/callback`;
+  const redirectHost = String(opts['redirect-host'] ?? 'localhost');
+  const redirectUri = `http://${redirectHost}:${port}/callback`;
+  // RFC 8707：resource 一般用资源元数据里的 `resource`；个别实现要求带尾斜杠，可用 --resource 覆盖
+  const resource = String(opts.resource ?? disc.resource);
   log(`→ 动态注册 public client（redirect: ${redirectUri}）`);
-  const clientId = await registerClient(asMeta, redirectUri, disc.resource);
+  const clientId = await registerClient(asMeta, redirectUri, resource);
 
   const verifier = b64url(randomBytes(48));
   let challenge = b64url(sha256(verifier));
@@ -329,7 +420,7 @@ async function login(base) {
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('code_challenge', challenge);
   authUrl.searchParams.set('code_challenge_method', 'S256');
-  authUrl.searchParams.set('resource', disc.resource);
+  authUrl.searchParams.set('resource', resource);
   authUrl.searchParams.set('state', state);
 
   const codePromise = waitForCode(server, state, Number(opts.timeout ?? 180) * 1000);
@@ -343,7 +434,7 @@ async function login(base) {
       base,
       clientId,
       redirectUri,
-      resource: disc.resource,
+      resource,
       authorizationServer: disc.authorizationServer,
       tokenEndpoint: asMeta.token_endpoint,
     },
@@ -355,7 +446,7 @@ async function login(base) {
       base,
       clientId,
       redirectUri,
-      resource: disc.resource,
+      resource,
       authorizationServer: disc.authorizationServer,
       tokenEndpoint: asMeta.token_endpoint,
     },
@@ -470,7 +561,11 @@ async function main() {
     const path = opts._[2] ?? '/api/health';
     const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
     const entry = await getAccessToken(baseUrl);
-    const res = await fetch(url, { headers: { authorization: `Bearer ${entry.accessToken}`, accept: 'application/json' } });
+    const res = await request(
+      url,
+      { headers: { authorization: `Bearer ${entry.accessToken}`, accept: 'application/json' } },
+      'API 请求',
+    );
     const text = await res.text();
     log(`${res.status} ${res.statusText}  ${url}`);
     console.log(text);

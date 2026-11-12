@@ -32,7 +32,9 @@ export function accessGuard(): MiddlewareHandler<{ Bindings: Env }> {
     const url = new URL(c.req.url);
     if (LOOPBACK_HOSTS.has(url.hostname)) return next();
 
-    const team = c.env.ACCESS_TEAM_DOMAIN?.trim().toLowerCase();
+    const rawTeam = c.env.ACCESS_TEAM_DOMAIN?.trim().toLowerCase();
+    // @hono/cloudflare-access 要的是 team 名（`mgt`），不是完整域名；两种写法都接受
+    const team = rawTeam?.replace(/\.cloudflareaccess\.com$/, '');
     const aud = c.env.ACCESS_AUD?.trim();
     if (!team) {
       console.error('非 loopback 请求，但未配置 ACCESS_TEAM_DOMAIN（Access 未接入）');

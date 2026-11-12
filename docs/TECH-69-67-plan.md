@@ -407,7 +407,7 @@ CREATE INDEX idx_links_src ON links(src_doc_id);
 线上:   自定义域 + Cloudflare Access            → @hono/cloudflare-access 验 RS256/iss/aud/exp
         workers_dev = false                     → 没有绕过入口
 ```
-- 中间件：`cloudflareAccess(ACCESS_TEAM_DOMAIN, ACCESS_AUD)`；401/500 被包装成 JSON，畸形 token → 401。
+- 中间件：`cloudflareAccess(ACCESS_TEAM_DOMAIN, ACCESS_AUD)`；team 可写 `mgt` 或完整 `mgt.cloudflareaccess.com`（`src/access.ts` 会剥离后缀，避免 `https://<team>.cloudflareaccess.com` 双后缀导致 401）。401/500 被包装成 JSON，畸形 token → 401。
 - Access 挂载步骤（部署时做）：自定义域 route → Access application → 邮箱白名单策略；并打开 **Managed OAuth**（Advanced settings，建议 Allow localhost/loopback clients、Access token 5–15m、Grant session 1–2 周）。
 - **agent 登录三选一**（`scripts/agent-oauth.mjs` 实现第一种）：
   1. **Managed OAuth**（推荐，不用申请 token）：`node scripts/agent-oauth.mjs login <base>` → 浏览器 SSO/邮箱登录一次；之后 `token`/`curl` 自动 refresh。RFC 9728/8414/7591 + PKCE，token 是 opaque `oauth:…`，Access 边缘换成 `Cf-Access-Jwt-Assertion` 给 Worker（代码零改动）。
@@ -424,7 +424,7 @@ pnpm i
 cd web && pnpm i && pnpm build && cd ..      # 产出 web/dist（Worker 静态资源）
 pnpm wrangler d1 create kb                    # 把输出里的 database_id 填进 wrangler.toml
 pnpm wrangler d1 execute kb --remote --file=migrations/0001_init.sql
-pnpm wrangler deploy --var ACCESS_TEAM_DOMAIN:<team> --var ACCESS_AUD:<aud>
+pnpm wrangler deploy --var ACCESS_TEAM_DOMAIN:<team> --var ACCESS_AUD:<aud>   # team 可写 mgt 或 mgt.cloudflareaccess.com
 ```
 本地开发：`pnpm dev`（wrangler dev，本地 D1 在 `.wrangler/state`，无需账号、无需 token）；测试：`pnpm test`；全链路验收：`pnpm verify`（需先 `pnpm dev`）。
 
@@ -545,7 +545,7 @@ pnpm wrangler deploy --var ACCESS_TEAM_DOMAIN:<team> --var ACCESS_AUD:<aud>
 
 1. `wrangler d1 create kb` → 填 `database_id`
 2. `pnpm wrangler d1 execute kb --remote --file=migrations/0001_init.sql`
-3. `cd web && pnpm build` → `pnpm wrangler deploy --var ACCESS_TEAM_DOMAIN:<team> --var ACCESS_AUD:<aud>`
+3. `cd web && pnpm build` → `pnpm wrangler deploy --var ACCESS_TEAM_DOMAIN:<team> --var ACCESS_AUD:<aud>   # team 可写 mgt 或 mgt.cloudflareaccess.com`
 4. Zero Trust 里给域名挂 Access（邮箱白名单 + agent Service Auth）
 5. `curl -i https://<域名>/api/health`：不带凭据应 302/401；带 service token 应 200
 6. 生产 D1 冒烟：建 FTS5、`bm25`、2 字中文、`d1 export` 限制（`research/d1/capabilities.md` §8 的清单）

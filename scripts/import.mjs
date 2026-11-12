@@ -3,7 +3,7 @@
 // 语义：已存在且内容相同 → 跳过；已存在但内容不同 → 用 If-Match: <hash> 覆盖；不存在 → If-Match: *
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { api, apiJson, docUrl } from './_http.mjs';
+import { api, apiJson, docUrl, BASE } from './_http.mjs';
 
 const args = process.argv.slice(2);
 const flag = (name, fallback) => {
@@ -169,7 +169,7 @@ async function main() {
 }
 
 function BASE_LABEL() {
-  return process.env.KB_BASE ?? 'http://127.0.0.1:8787';
+  return BASE;
 }
 
 main().catch((err) => {

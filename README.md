@@ -83,6 +83,7 @@ $env:VITE_DEV_PROXY_TARGET='http://127.0.0.1:8787'; pnpm dev   # 开发时接真
 2. `pnpm build`
 3. `pnpm wrangler d1 execute kb --remote --file=migrations/0001_init.sql`
 4. `pnpm wrangler deploy --var ACCESS_TEAM_DOMAIN:<team> --var ACCESS_AUD:<aud>`
+   （`<team>` 写 `mgt` 或完整 `mgt.cloudflareaccess.com` 都行，`src/access.ts` 会自动剥离后缀；推荐用 `wrangler secret put` 存，别写进公开仓库）
 5. **在 Cloudflare Zero Trust 里给这个域名挂 Access application**（邮箱白名单），并确认 `workers_dev = false` 已生效
 6. **给 agent 开 Managed OAuth**（推荐）：Access 应用 → **Advanced settings** → 打开 **Managed OAuth**；建议同时打开 *Allow localhost clients* / *Allow loopback clients*，Access token lifetime 设 5–15 分钟，Grant session duration 设 1–2 周
 7. 验收：`curl -i https://<域名>/api/health` 不带凭据必须是 **401**（带 `WWW-Authenticate`）或 302；浏览器能登录、agent 用下面的脚本能 200
@@ -105,6 +106,11 @@ node scripts/agent-oauth.mjs status https://kb.example.com
 - token 存在 `.auth/oauth.json`（已 gitignore，权限 600），`--token-file` 可改；**不要提交**。
 - Access token 默认 15 分钟，脚本自动续期；refresh token（Grant session）过期后重跑一次 `login`。
 - 如果应用还没开 Managed OAuth，脚本会提示（收到 302 而不是 401）。
+- **OAuth 踩坑记录**（脚本已处理）：
+  - Windows 打开授权 URL 不能用 `cmd /c start`（URL 里的 `&` 会被 cmd 截断，Cloudflare 报 `invalid_target: No resource parameter found` / `Consent request is malformed`）；脚本改用 `rundll32`。
+  - 回调默认用 `http://localhost:8400/callback`（Cloudflare Managed OAuth 的推荐形态；`127.0.0.1` 需要单独开 *Allow loopback clients*）。端口占用会自动换。
+  - 本机到 Cloudflare 用 Node `fetch` 偶发连接超时，脚本改用 `node:https` + IPv4 + 重试；`_http.mjs` 同样处理。
+  - 浏览器一直转圈/无痕能开：先试 `--no-open`，复制完整授权 URL 到无痕窗口；或检查 Access 应用 Managed OAuth 里 *Allow localhost clients* / *Allow loopback clients* 是否都开着。
 - 备选：`cloudflared access login https://kb.example.com` 拿 token 后发 `cf-access-token` 头；完全无人值守再建 Service Token（`CF-Access-Client-Id/Secret`）。
 - 仓库根的 [`AGENTS.md`](AGENTS.md) 是给 coding agent 的自助说明，agent 读到 401 会按它走。
 

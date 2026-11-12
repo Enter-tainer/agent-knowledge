@@ -13,6 +13,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' -H 'accept: application/json' <base>/a
 - `401` → 看响应头 `www-authenticate`：如果有 `resource_metadata="…"`，走第 2 步（Managed OAuth）。
 - `302` → 该应用还没开 Managed OAuth；告诉用户去 Access 应用 **Advanced settings → Managed OAuth** 打开。
 
+> 线上域名示例：`https://kb.mgt.moe`。Worker 的 `ACCESS_TEAM_DOMAIN` 写 `mgt` 或 `mgt.cloudflareaccess.com` 都可以。
+
 ## 2. 用仓库脚本登录（推荐）
 
 脚本零依赖，会做 RFC 9728/8414 发现、动态注册、PKCE、本地回调、token 刷新：
