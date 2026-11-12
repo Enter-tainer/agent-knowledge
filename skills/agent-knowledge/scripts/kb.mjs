@@ -4,7 +4,7 @@
 //   node skills/agent-knowledge/scripts/kb.mjs health
 //   KB_BASE=https://kb.example.com node skills/agent-knowledge/scripts/kb.mjs search '关键词'
 import { readFileSync, writeFileSync } from 'node:fs';
-import { api, apiJson, BASE, docUrl } from '../../../scripts/_http.mjs';
+import { api, apiJson, BASE, docUrl } from './http.mjs';
 
 const [cmd, ...args] = process.argv.slice(2);
 

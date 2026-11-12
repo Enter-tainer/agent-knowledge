@@ -1,7 +1,7 @@
 ---
 name: agent-knowledge
 description: "Use when reading or writing an agent-knowledge md KB (Cloudflare Access)."
-version: 1.0.0
+version: 1.0.1
 license: MIT
 metadata:
   tags: [knowledge-base, cloudflare, d1, oauth]
@@ -33,10 +33,24 @@ curl -sS -o /dev/null -D - -H 'accept: application/json' "$BASE/api/health"
 
 `BASE` 形如 `https://<your-worker-domain>`（自建时换成自己的域名）。
 
+## 安装位置（本 skill 自带脚本，可独立运行）
+
+```bash
+# 用 skills CLI 安装后（npx skills add Enter-tainer/agent-knowledge@agent-knowledge -g -y）：
+SKILL_DIR="${AGENT_SKILLS_HOME:-$HOME/.agents/skills}/agent-knowledge"
+ls "$SKILL_DIR/scripts"      # agent-oauth.mjs  http.mjs  kb.mjs
+
+# 如果你在 agent-knowledge 仓库里（git clone），用仓库路径：
+# SKILL_DIR="$PWD/skills/agent-knowledge"
+```
+
+token 默认存在 `~/.agent-knowledge/oauth.json`（0600）；用 `AGENT_OAUTH_FILE` 可改。
+**token 不要写进代码、不要提交、不要贴进聊天记录或日志。**
+
 ## 1. 登录（一次性，拿 Bearer token）
 
 ```bash
-node scripts/agent-oauth.mjs login "$BASE" --no-open --timeout 900
+node "$SKILL_DIR/scripts/agent-oauth.mjs" login "$BASE" --no-open --timeout 900
 ```
 
 零依赖脚本，自己完成 RFC 9728/8414 发现 → 动态注册 public client → PKCE → 本地回调 → 存 token。
@@ -55,24 +69,22 @@ node scripts/agent-oauth.mjs login "$BASE" --no-open --timeout 900
 
   这一步只是把 code 交给本地监听器换取 token，不涉及任何密码。
 
-token 存在 `.auth/oauth.json`（0600，已 gitignore）：access token 默认 15 分钟，
-`token` / `curl` 子命令会自动用 refresh_token 续期；refresh 彻底失效（session 过期）才需要重新 `login`。
+access token 默认 15 分钟，`token` / `curl` 子命令会自动用 refresh_token 续期；
+refresh 彻底失效（grant session 过期）才需要重新 `login`。
 
 ```bash
-node scripts/agent-oauth.mjs token  "$BASE"      # 打印 access_token（自动续期）
-node scripts/agent-oauth.mjs status "$BASE"      # 看本地 token 与过期时间
-node scripts/agent-oauth.mjs curl   "$BASE" /api # 带 Bearer 的 GET
+node "$SKILL_DIR/scripts/agent-oauth.mjs" token  "$BASE"      # 打印 access_token（自动续期）
+node "$SKILL_DIR/scripts/agent-oauth.mjs" status "$BASE"      # 看本地 token 与过期时间
+node "$SKILL_DIR/scripts/agent-oauth.mjs" curl   "$BASE" /api # 带 Bearer 的 GET
 ```
 
-> token / secret 不要写进代码、不要提交、不要贴进聊天记录或日志。
+## 2. 日常读写：`$SKILL_DIR/scripts/kb.mjs`
 
-## 2. 日常读写：`skills/agent-knowledge/scripts/kb.mjs`
-
-复用仓库里的 `scripts/_http.mjs`（`node:https` + 重试 + token 自动续期），所以**在仓库根目录运行**：
+自带 `http.mjs`（`node:https` + 重试 + token 自动续期），**不依赖仓库其他文件**：
 
 ```bash
 export KB_BASE=https://<your-worker-domain>     # 缺省 http://127.0.0.1:8787（本地 wrangler dev）
-KB="node skills/agent-knowledge/scripts/kb.mjs"
+KB="node $SKILL_DIR/scripts/kb.mjs"
 
 $KB health                       # {ok, docs, stale}
 $KB tree [prefix] [limit]        # 列目录（path/title/tags/size/updated）
@@ -87,8 +99,8 @@ $KB export zip out.zip           # 导出全库备份
 $KB reindex                      # 重建检索索引
 ```
 
-重试与鉴权都在 `_http.mjs` 里：Managed OAuth token（`.auth/oauth.json`，过期自动续期）、
-service token（`KB_ACCESS_CLIENT_ID` / `KB_ACCESS_CLIENT_SECRET`）、或显式 `KB_OAUTH_TOKEN`。
+鉴权优先级：`KB_OAUTH_TOKEN`（显式）→ `AGENT_OAUTH_FILE` / `~/.agent-knowledge/oauth.json`
+（Managed OAuth，过期自动续期）→ `KB_ACCESS_CLIENT_ID` / `KB_ACCESS_CLIENT_SECRET`（service token）。
 `path` 是 vault 相对路径、**不带 `.md`**，中文 / 空格 / 全角标点照原样传，脚本内部做 URL 编码。
 
 ## 3. API 约定（直接调 HTTP 时）
@@ -107,18 +119,20 @@ service token（`KB_ACCESS_CLIENT_ID` / `KB_ACCESS_CLIENT_SECRET`）、或显式
 ## 4. 坑（都踩过）
 
 1. **到 Cloudflare edge 的连接会偶发 timeout / connection reset**（实测约 1/3）。
-   单次失败**不代表** token 错或权限错——`scripts/_http.mjs` 已内置重试，别急着重新登录。
+   单次失败**不代表** token 错或权限错——`http.mjs` 已内置重试，别急着重新登录。
 2. **Node 原生 `fetch`（undici）可能直接挂死**（超时设了也不返回），
-   `_http.mjs` 与 `agent-oauth.mjs` 因此都用 `node:https` + `ipv4first`。自己写客户端时照做。
-3. `curl --http1.1` 到 Cloudflare 域名常超时，用默认 HTTP/2。
-4. path 忘了 URL 编码 → 400/404；别忘了 **path 不带 `.md`**。
-5. 不要对线上库跑仓库里的 `pnpm import` / `pnpm db:init`——那是本地 D1。
+   `http.mjs` 与 `agent-oauth.mjs` 因此都用 `node:https` + `ipv4first`。自己写客户端时照做。
+3. **Windows 打开授权 URL 别用 `cmd /c start`**：URL 里的 `&` 会被 cmd 截断，
+   Cloudflare 会报 `invalid_target` / `Consent request is malformed`。脚本已用 `rundll32`。
+4. `curl --http1.1` 到 Cloudflare 域名常超时，用默认 HTTP/2。
+5. `path` 忘了 URL 编码 → 400/404；别忘了 **path 不带 `.md`**。
+6. 不要对线上库跑仓库里的 `pnpm import` / `pnpm db:init`——那是本地 D1。
 
 ## 5. 验证连接是否真的通了
 
 ```bash
 export KB_BASE=https://<your-worker-domain>
-KB="node skills/agent-knowledge/scripts/kb.mjs"
+KB="node $SKILL_DIR/scripts/kb.mjs"
 
 $KB health                                  # ok:true, stale:0
 $KB search '两个字的词' 3                     # 有 results
