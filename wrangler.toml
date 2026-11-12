@@ -1,0 +1,19 @@
+name = "agent-knowledge"
+main = "src/index.ts"
+compatibility_date = "2026-10-30"
+
+# 不开 *.workers.dev：唯一入口是绑了 Cloudflare Access 的自定义域。
+workers_dev = false
+
+# 数据全在 D1（不用 R2）。首次部署前把 database_id 换成 `wrangler d1 create kb` 的输出。
+[[d1_databases]]
+binding = "DB"
+database_name = "kb"
+database_id = "bc9f4c1a-044d-44e3-820c-6a6e7acae01f"
+
+# 静态前端：web/ 由 Vite 构建到 web/dist；Worker 只处理 /api/*
+[assets]
+directory = "./web/dist"
+binding = "ASSETS"
+# History 路由：/d/<path> 这类深链接刷新时回退到 index.html
+not_found_handling = "single-page-application"

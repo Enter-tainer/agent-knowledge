@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --dir web install --frozen-lockfile
+
+      - name: Typecheck
+        run: |
+          pnpm typecheck
+          pnpm --dir web typecheck
+
+      - name: Unit tests
+        run: pnpm test
+
+      - name: Build web
+        run: pnpm build
+
+      # 说明：golden / adversarial / regression 依赖私有 vault（vault-src/），
+      # 公开仓库没有它，所以 CI 只跑单测 + 构建；需要完整验收请在有 vault 的机器上跑 `pnpm verify`。

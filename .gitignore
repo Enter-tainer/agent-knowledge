@@ -1,0 +1,34 @@
+# 私有语料：绝不提交（含真实设备标识与逆向细节）
+vault-src/
+
+# 构建与本地状态
+node_modules/
+.pnpm-store/
+.wrangler/
+dist/
+web/dist/
+.scratch/
+*.db
+*.db-journal
+*.db-wal
+research/bench/indexes/
+.npmcache/
+
+.dev.vars
+.reviews-tmp/
+reviews/*.tmp
+
+
+# 本地备份产物
+backups/
+
+
+# Managed OAuth token（agent 登录）
+.auth/
+
+
+# 私有语料派生数据（含真实笔记标题/路径/外链/截图），开源前默认不提交
+reviews/
+research/corpus/
+research/bench/results.json
+

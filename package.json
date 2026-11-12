@@ -1,0 +1,46 @@
+{
+  "name": "agent-knowledge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.12.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "wrangler dev --ip 127.0.0.1",
+    "build": "pnpm --dir web build",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:init": "wrangler d1 execute kb --local --file=migrations/0001_init.sql",
+    "db:init:remote": "wrangler d1 execute kb --remote --file=migrations/0001_init.sql",
+    "import": "node scripts/import.mjs",
+    "backup": "node scripts/backup.mjs",
+    "agent:login": "node scripts/agent-oauth.mjs login",
+    "agent:token": "node scripts/agent-oauth.mjs token",
+    "agent:status": "node scripts/agent-oauth.mjs status",
+    "smoke": "node scripts/smoke.mjs",
+    "golden": "node scripts/golden.mjs",
+    "adversarial": "node scripts/adversarial.mjs",
+    "regression": "node scripts/regression.mjs",
+    "verify": "node scripts/import.mjs && node scripts/smoke.mjs && node scripts/golden.mjs && node scripts/adversarial.mjs && node scripts/regression.mjs",
+    "build:web": "pnpm --dir web build"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20251101.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4",
+    "wrangler": "4.155.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ]
+  },
+  "dependencies": {
+    "@hono/cloudflare-access": "^0.4.0",
+    "hono": "^4.13.18"
+  }
+}
