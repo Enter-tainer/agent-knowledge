@@ -44,7 +44,10 @@ ls "$SKILL_DIR/scripts"      # agent-oauth.mjs  http.mjs  kb.mjs
 # SKILL_DIR="$PWD/skills/agent-knowledge"
 ```
 
-token 默认存在 `~/.agent-knowledge/oauth.json`（0600）；用 `AGENT_OAUTH_FILE` 可改。
+token 存在标准「应用数据」目录（**不是 cache**，cache 会被系统清理）：
+Linux `$XDG_DATA_HOME/agent-knowledge/oauth.json`（默认 `~/.local/share/agent-knowledge/oauth.json`）、
+macOS `~/Library/Application Support/agent-knowledge/oauth.json`、Windows `%LOCALAPPDATA%\agent-knowledge\oauth.json`；
+`AGENT_OAUTH_FILE` 可覆盖。
 **token 不要写进代码、不要提交、不要贴进聊天记录或日志。**
 
 ## 1. 登录（一次性，拿 Bearer token）
@@ -99,8 +102,8 @@ $KB export zip out.zip           # 导出全库备份
 $KB reindex                      # 重建检索索引
 ```
 
-鉴权优先级：`KB_OAUTH_TOKEN`（显式）→ `AGENT_OAUTH_FILE` / `~/.agent-knowledge/oauth.json`
-（Managed OAuth，过期自动续期）→ `KB_ACCESS_CLIENT_ID` / `KB_ACCESS_CLIENT_SECRET`（service token）。
+鉴权优先级：`KB_OAUTH_TOKEN`（显式）→ `AGENT_OAUTH_FILE` / 标准数据目录里的 `oauth.json`
+（Linux `~/.local/share/agent-knowledge/oauth.json`、macOS `~/Library/Application Support/...`、Windows `%LOCALAPPDATA%\agent-knowledge\oauth.json`；过期自动续期）→ `KB_ACCESS_CLIENT_ID` / `KB_ACCESS_CLIENT_SECRET`（service token）。
 `path` 是 vault 相对路径、**不带 `.md`**，中文 / 空格 / 全角标点照原样传，脚本内部做 URL 编码。
 
 ## 3. API 约定（直接调 HTTP 时）

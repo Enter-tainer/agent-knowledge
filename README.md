@@ -103,7 +103,7 @@ node scripts/agent-oauth.mjs curl  https://kb.example.com /api/health
 node scripts/agent-oauth.mjs status https://kb.example.com
 ```
 
-- token 存在 `.auth/oauth.json`（已 gitignore，权限 600），`--token-file` 可改；**不要提交**。
+- token 存标准「应用数据」目录（**不是 cache**，缓存会被系统清理）：Linux `$XDG_DATA_HOME/agent-knowledge/oauth.json`（默认 `~/.local/share/agent-knowledge/oauth.json`）、macOS `~/Library/Application Support/agent-knowledge/oauth.json`、Windows `%LOCALAPPDATA%\agent-knowledge\oauth.json`；`--token-file` / `AGENT_OAUTH_FILE` 可改；**不要提交**。
 - Access token 默认 15 分钟，脚本自动续期；refresh token（Grant session）过期后重跑一次 `login`。
 - 如果应用还没开 Managed OAuth，脚本会提示（收到 302 而不是 401）。
 - **OAuth 踩坑记录**（脚本已处理）：

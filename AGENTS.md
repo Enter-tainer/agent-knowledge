@@ -31,7 +31,7 @@ node scripts/agent-oauth.mjs curl  <base> /api/health
 curl -H "Authorization: Bearer <access_token>" <base>/api/tree?limit=5
 ```
 
-token 文件在 `.auth/oauth.json`（已 gitignore）。**不要把它提交、不要打进日志。**
+token 存在标准应用数据目录：Linux `~/.local/share/agent-knowledge/oauth.json`、macOS `~/Library/Application Support/agent-knowledge/oauth.json`、Windows `%LOCALAPPDATA%\agent-knowledge\oauth.json`（`AGENT_OAUTH_FILE` 可覆盖）。**不要把它提交、不要打进日志。**
 access token 默认 15 分钟；脚本在 `token`/`curl` 时自动用 refresh_token 续期。
 refresh 失败（grant session 过期）= 重新跑一次 `login`，再让用户点一下浏览器。
 

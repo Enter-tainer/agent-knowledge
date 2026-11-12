@@ -18,7 +18,9 @@
 // 前置（一次性，在 Access 应用里）：Advanced settings → 打开 Managed OAuth；
 //   建议同时打开 "Allow localhost clients" / "Allow loopback clients"、
 //   Access token lifetime 5–15m、Grant session duration 1–2 周。
-// token 存在 .auth/oauth.json（已 gitignore），可用 --token-file 覆盖。
+// token 存在标准「应用数据」目录（不是 cache）：Linux ~/.local/share/agent-knowledge/oauth.json、
+// macOS ~/Library/Application Support/agent-knowledge/oauth.json、Windows %LOCALAPPDATA%\agent-knowledge\oauth.json；
+// 可用 --token-file 或 AGENT_OAUTH_FILE 覆盖。
 import { createServer } from 'node:http';
 import { createHash, randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
@@ -26,7 +28,8 @@ import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'n
 import { setDefaultResultOrder } from 'node:dns';
 import { request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
-import { dirname, resolve } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 
 // 国内网络里 Cloudflare 域名的 AAAA 有时会黑洞：优先 IPv4，避免 Node fetch 卡 10s+ 超时
 try {
@@ -107,7 +110,27 @@ async function request(url, init = {}, label = '请求', attempts = 3) {
 
 const args = process.argv.slice(2);
 const opts = parseOpts(args);
-const tokenFile = resolve(opts['token-file'] ?? process.env.AGENT_OAUTH_FILE ?? '.auth/oauth.json');
+
+/** 标准「应用数据」目录：token 不能放 cache（会被当可清理数据），也不放 Roaming。 */
+function dataDir() {
+  const env = process.env;
+  if (process.platform === 'win32') return join(env.LOCALAPPDATA ?? join(homedir(), 'AppData', 'Local'), 'agent-knowledge');
+  if (process.platform === 'darwin') return join(homedir(), 'Library', 'Application Support', 'agent-knowledge');
+  return join(env.XDG_DATA_HOME ?? join(homedir(), '.local', 'share'), 'agent-knowledge');
+}
+
+function resolveTokenFile() {
+  const explicit = opts['token-file'] ?? process.env.AGENT_OAUTH_FILE;
+  if (explicit) return resolve(explicit);
+  const candidates = [
+    join(dataDir(), 'oauth.json'),
+    join(homedir(), '.agent-knowledge', 'oauth.json'), // 旧版位置，自动兼容
+    resolve('.auth/oauth.json'), // 仓库本地开发
+  ];
+  return candidates.find(existsSync) ?? candidates[0];
+}
+
+const tokenFile = resolveTokenFile();
 const command = opts._[0];
 const baseUrl = normalizeBase(opts._[1] ?? process.env.KB_BASE_URL ?? '');
 
