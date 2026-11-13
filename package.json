@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "wrangler dev --ip 127.0.0.1",
-    "build": "pnpm --dir web build",
+    "build": "pnpm --dir web install --frozen-lockfile && pnpm --dir web build",
     "deploy": "wrangler deploy",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
