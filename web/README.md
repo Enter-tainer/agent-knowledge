@@ -76,7 +76,7 @@ pnpm test         # jsdom 单测（router / 滚动恢复 / 持久布局 / 侧边
 - 滚动：`history.scrollRestoration='manual'`，`history.state.kbScrollY` 记录每个历史条目位置；push 导航回顶、浏览器前进/后退恢复原位置、带 `#hash` 的深链渲染后滚到锚点。
 - 目录树数据只拉一次（`store.loadTree` 缓存；实测整场会话 `/api/tree` = 1 次）；保存笔记后 `invalidateTree()` 触发侧边栏刷新，保留展开状态与滚动位置。
 - **同名「目录 + 笔记」合并**：vault 里 `示例库.md` 与 `示例库/` 同名（实测 4 处）。侧边栏只渲染一行：
-  点名称打开笔记，点行尾箭头展开子目录；纯目录仍是 `<details>` 整行展开。合并只发生在 `ui/tree-model.ts`，API 与 URL 不变。
+  点名称打开笔记，点行尾箭头**或中间的「N 篇」徽标**展开子目录；纯目录仍是 `<details>` 整行展开。合并只发生在 `ui/tree-model.ts`，API 与 URL 不变。
 
 `docs/web-nav-sidebar-acceptance.md` 是这次修复的准出标准与验收记录（A/B/C 条款、基线证据、审查结论）。
 

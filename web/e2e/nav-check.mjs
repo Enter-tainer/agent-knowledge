@@ -42,7 +42,7 @@ const CRITERIA = {
   B5: '抽屉：Esc/遮罩/点链接都关闭、焦点回触发按钮、无残留 no-scroll、（窄屏）',
   B6: '404 / 页面级错误态仍在 shell 内并保留侧边栏',
   B7: '目录树加载失败：侧边栏显示可重试错误，正文仍可用；重试后树恢复',
-  B8: '同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc 与 .tree-dir-toggle(aria-expanded/aria-controls)，无重复行',
+  B8: '同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc、.tree-dir-toggle 与可点的「N 篇」徽标（三者同 aria-controls），无重复行',
   C4: '巡览全程无 console.error / pageerror / 非预期 4xx-5xx',
   C5: '导航后焦点落在内容区；侧边栏 nav[aria-label]；抽屉 role=dialog aria-modal',
 };
@@ -413,6 +413,7 @@ const MEASURE_SCRIPT = `(() => {
       const toggle = merged ? node.querySelector('.tree-dir-toggle') : null;
       const controls = toggle ? toggle.getAttribute('aria-controls') : null;
       const childList = controls ? document.getElementById(controls) : null;
+      const countToggle = merged ? node.querySelector('.tree-count-btn') : null;
       const docLink = node.querySelector('a.tree-doc[data-doc-path]');
       return {
         path,
@@ -424,6 +425,10 @@ const MEASURE_SCRIPT = `(() => {
         controls: controls || null,
         childVisible: childList ? !childList.hidden : null,
         docPath: docLink ? docLink.getAttribute('data-doc-path') : null,
+        // 「N 篇」徽标本身也是展开/收起按钮（用户需求）：它必须指向同一个受控列表
+        countToggle: Boolean(countToggle && countToggle.tagName === 'BUTTON'),
+        countControls: countToggle ? countToggle.getAttribute('aria-controls') : null,
+        countLabel: countToggle ? (countToggle.textContent || '').trim() : null,
       };
     }) : [],
     navCount: performance.getEntriesByType('navigation').length,
@@ -786,6 +791,9 @@ async function phaseTour(br, ctx) {
           row.details === false &&
           row.toggle === true &&
           Boolean(row.controls) &&
+          row.countToggle === true &&
+          row.countControls === row.controls &&
+          /^\d+ 篇$/.test(row.countLabel || '') &&
           row.docPath === path &&
           (row.expanded === true || row.expanded === false) &&
           row.childVisible === row.expanded,
@@ -810,22 +818,53 @@ async function phaseTour(br, ctx) {
           const row = [...document.querySelectorAll('aside.sidebar [data-dir-path]')].find((node) => node.dataset.dirPath === ${js(toggleTarget)});
           if (!row) return null;
           const button = row.querySelector('.tree-dir-toggle');
-          if (!button) return null;
+          const badge = row.querySelector('.tree-count-btn');
+          if (!button || !badge) return null;
           const controls = button.getAttribute('aria-controls');
           const list = controls ? document.getElementById(controls) : null;
           const before = button.getAttribute('aria-expanded');
+          // 1) 箭头：展开
           button.click();
-          const after = button.getAttribute('aria-expanded');
-          const hiddenAfter = list ? list.hidden : null;
-          button.click();
-          return { before, after, hiddenAfter, hasControls: Boolean(controls) };
+          const afterCaret = button.getAttribute('aria-expanded');
+          const hiddenAfterCaret = list ? list.hidden : null;
+          const badgeSynced = badge.getAttribute('aria-expanded');
+          // 2) 「N 篇」徽标：收起（用户需求：点徽标也能控制展开）
+          badge.click();
+          const afterBadge = badge.getAttribute('aria-expanded');
+          const caretSynced = button.getAttribute('aria-expanded');
+          const hiddenAfterBadge = list ? list.hidden : null;
+          // 复位，避免影响后续阶段
+          if (list && !list.hidden) badge.click();
+          return {
+            before,
+            afterCaret,
+            hiddenAfterCaret,
+            badgeSynced,
+            afterBadge,
+            caretSynced,
+            hiddenAfterBadge,
+            hasControls: Boolean(controls),
+            controls: controls || null,
+            badgeControls: badge.getAttribute('aria-controls'),
+            badgeLabel: (badge.textContent || '').trim(),
+          };
         })()`,
         { retry: 0 },
       );
       report.add(
         'B8',
-        Boolean(toggled && toggled.hasControls && toggled.before !== toggled.after && toggled.hiddenAfter === (toggled.after === 'false')),
-        `合并行 toggle「${toggleTarget}」：aria-expanded ${toggled && toggled.before}→${toggled && toggled.after}、子列表 hidden=${toggled && toggled.hiddenAfter}`,
+        Boolean(
+          toggled &&
+            toggled.hasControls &&
+            toggled.badgeControls === toggled.controls &&
+            toggled.before !== toggled.afterCaret &&
+            toggled.hiddenAfterCaret === (toggled.afterCaret === 'false') &&
+            toggled.badgeSynced === toggled.afterCaret &&
+            toggled.afterBadge !== toggled.afterCaret &&
+            toggled.caretSynced === toggled.afterBadge &&
+            toggled.hiddenAfterBadge === (toggled.afterBadge === 'false'),
+        ),
+        `合并行「${toggleTarget}」：箭头 aria-expanded ${toggled && toggled.before}→${toggled && toggled.afterCaret}（徽标同步=${toggled && toggled.badgeSynced}），点「${toggled && toggled.badgeLabel}」徽标 ${toggled && toggled.afterBadge}（箭头同步=${toggled && toggled.caretSynced}、子列表 hidden=${toggled && toggled.hiddenAfterBadge}）`,
         { b8Toggle: toggled },
       );
     }

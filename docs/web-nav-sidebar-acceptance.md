@@ -42,6 +42,7 @@
 10. **同名「目录 + 笔记」合并为一行**（P5 / B8）：`/root/test.md` + `/root/test/aaa.md` → 侧边栏只有一行 `test`：
     - 点名称 = 打开 `test.md`（`<a href="/d/test/">`，交 SPA 接管）；
     - 点行尾箭头 = 展开/收起 `test/` 下的子目录（`<button aria-expanded aria-controls>`）；
+    - **点中间的「N 篇」徽标 = 同样展开/收起**（用户验收反馈，2026-11-15）：徽标也是 `<button>`，与箭头共用同一 `aria-controls` / `aria-expanded`，两侧状态互相同步；
     - 纯目录（没有同名笔记）仍用 `<details>/<summary>`，整行点击展开；箭头同样在右侧；
     - 合并只发生在树模型层（`ui/tree-model.ts`），后端 API 与文档 URL **不变**，总篇数不重复计数。
 11. 页面不直接写 `document.title`：首次由 `PageView.title` 设置；页面内动态变更（如新建保存成功）走 `layout.setTitle()`。
@@ -106,7 +107,7 @@ layout.openDrawer();                             // 移动端抽屉（自动带 
 - **B5** 抽屉：Esc 关闭、点遮罩关闭、点链接导航后关闭、关闭后焦点回到触发按钮、`documentElement` 无残留 `no-scroll`。
 - **B6** 404 / 页面级错误态仍在 shell 内并保留侧边栏。
 - **B7** 目录树加载失败时：侧边栏显示可重试错误，页面内容仍可正常使用（不整页报错）。
-- **B8** 同名「目录 + 笔记」只渲染一行（真实语料 4 处）：该行点名称打开对应笔记（URL 为真实路径），点行尾箭头展开/收起子目录且不触发导航；纯目录（无同名笔记）保持 `<details>` 整行展开；两种目录行箭头都在右侧；首页/搜索/报告页侧边栏总篇数 = 真实文档数（不重复计数）。
+- **B8** 同名「目录 + 笔记」只渲染一行（真实语料 4 处）：该行点名称打开对应笔记（URL 为真实路径），点行尾箭头或「N 篇」徽标都能展开/收起子目录（两者 `aria-controls` 相同、状态同步）且不触发导航；纯目录（无同名笔记）保持 `<details>` 整行展开；两种目录行箭头都在右侧；首页/搜索/报告页侧边栏总篇数 = 真实文档数（不重复计数）。
 
 ### C. 质量门禁
 
@@ -154,10 +155,10 @@ node scripts/redact-evidence.mjs --in web/e2e/reports/baseline-raw.json --out do
 结果：**desktop 2 pass / 13 fail，mobile 2 pass / 11 fail → 24 条失败**（两端各通过的 2 条是 A1、C4），逐条对应上文 P1–P3。
 原始 JSON：`docs/evidence/baseline-nav-check.json`；失败项与问题的映射见 `docs/evidence/README.md`。
 
-### 7.2 修复后（最终构建 `index-pVuRVRx_.js`）
+### 7.2 修复后（最终构建 `index-UFD7i_dS.js`）
 
 ```bash
-pnpm build                                            # dist/assets/index-pVuRVRx_.js
+pnpm build                                            # dist/assets/index-UFD7i_dS.js
 node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out web/e2e/reports/after-raw.json
 node scripts/redact-evidence.mjs --in web/e2e/reports/after-raw.json --out docs/evidence/after-nav-check.json
 node scripts/check-private.mjs                        # 必须退出码 0
@@ -187,7 +188,7 @@ node scripts/check-private.mjs                        # 必须退出码 0
 - B5 抽屉 `role=dialog aria-modal=true`、36 个节点、焦点陷阱；Esc / 遮罩 / 点链接三条关闭路径都通过，`no-scroll` 无残留，焦点回触发按钮
 - B6 未知路由与缺失文档都留在 shell 内并保留侧边栏
 - B7 树加载失败 → 侧边栏可重试错误、正文可用；重试后恢复 36 篇
-- B8 四处同名冲突各只有 1 行，箭头能折叠子列表
+- B8 四处同名冲突各只有 1 行；箭头与「N 篇」徽标都能折叠子列表（徽标点后箭头 `aria-expanded` 同步、受控列表 `hidden=false`，实测「6 篇」徽标 true）
 - C4 `console.error=0`、`pageerror=0`、`unhandledrejection=0`、非预期 4xx/5xx=0
 - C5 导航后焦点落在 `.page-content` 内、抽屉内 Tab×4 焦点不逃逸
 
@@ -198,10 +199,10 @@ node scripts/check-private.mjs                        # 必须退出码 0
 | `pnpm typecheck` | 通过 |
 | `pnpm --dir web typecheck` | 通过（`web/tests/**` 也在 include 内，测试本身受类型检查） |
 | `pnpm test` | 6 文件 / **64 用例** 全绿（后端，未改动） |
-| `pnpm --dir web test` | 5 文件 / **101 用例** 全绿 |
-| `pnpm build` | 成功，`dist/index-pVuRVRx_.js` |
+| `pnpm --dir web test` | 5 文件 / **103 用例** 全绿 |
+| `pnpm build` | 成功，`dist/index-UFD7i_dS.js` |
 
-前端 101 个用例分布：
+前端 103 个用例分布：
 
 | 文件 | 用例 | 覆盖 |
 | --- | --- | --- |
@@ -209,9 +210,9 @@ node scripts/check-private.mjs                        # 必须退出码 0
 | `web/tests/scroll.test.ts` | 21 | key + 内存记账、跨刷新兜底、push/replace/`replaceEntryKeepScroll`、节流定时器竞态回归、`scrollToTop`/`restoreScroll`/`scrollToHash` |
 | `web/tests/layout.test.ts` | 26 | mount 幂等、只换 `.page-content`、`aria-busy` + 150ms 进度条、title/searchQuery/wide/showSidebar、`showError` 留在 shell、onMount/onTeardown 顺序、滚动三态、焦点管理 |
 | `web/tests/sidebar.test.ts` | 12 | **保存→invalidateTree→侧边栏刷新整链**、事件自激环回归、刷新失败提示、合并行契约、`aria-controls` 指向、增量高亮不重建 DOM |
-| `web/tests/tree-model.test.ts` | 14 | 同名合并、`countDocs` 不重复计数、`ancestorsOf`、`mergeOpenPaths`、合并行 DOM 契约 |
+| `web/tests/tree-model.test.ts` | 16 | 同名合并、`countDocs` 不重复计数、`ancestorsOf`、`mergeOpenPaths`、合并行 DOM 契约（含「N 篇」徽标可点/与箭头状态同步） |
 
-**产物体积（C2）**：基线 `index` 未压缩 **200,611 B**；最终 `index-pVuRVRx_.js` = **212,823 B 未压缩 / 81,722 B gzip**。
+**产物体积（C2）**：基线 `index` 未压缩 **200,611 B**；最终 `index-UFD7i_dS.js` = **213,000 B 未压缩 / 81,770 B gzip**。
 未压缩 +6.1%、gzip 侧 +0.5 kB 量级，**远低于 +15% 上限**。CSS 31.8 → 32.2 kB（gzip 6.94 → 7.01 kB）。
 
 ### 7.4 三轮对抗性审查（C7）
@@ -242,6 +243,7 @@ node scripts/check-private.mjs                        # 必须退出码 0
 | 12 | P2 | 标题「复制本节链接」用 `replaceState(null)` 抹掉 `kbKey`，该条目之后后退回顶部 | 改为保留 `history.state` 后再改 hash |
 | 13 | P3 | `web/index.html` 缺 favicon 导致每次访问多一个 `/favicon.ico` 404 | 内联 SVG data-URI（无额外请求） |
 | 14 | P3 | `createSidebar` 没有清理接口，测试里多实例会串扰 | `SidebarHandle.destroy?()` 解绑全局监听 |
+| 15 | P2 | **（用户验收反馈，2026-11-15）** 合并行的「N 篇」徽标是纯 `<span>`，点了没反应；手习惯落在徽标上，只能去够行尾小箭头 | 徽标改成 `<button type="button" class="tree-count-btn">`，与箭头共用同一个 `aria-controls` / `aria-expanded`，点任一处另一处同步；补 hover/focus 样式与移动端 44px 命中区；单测 + 端到端各加断言（B8 实测：箭头 true→false 时徽标同步 false，点「6 篇」徽标回到 true 且受控列表 `hidden=false`） |
 
 **收尾自查：砍掉两条「恒真断言」（假绿）**
 
@@ -252,7 +254,7 @@ node scripts/check-private.mjs                        # 必须退出码 0
 | A1 | `ctx.boot.bootAt === null \|\| finalMeasure.bootAt === ctx.boot.bootAt` | `__kbBootAt` 这个窗口变量在应用代码里**根本没人写入**，两边永远是 `null`，`null === null` 恒真 | `main.ts` 在 `mount()` **之前**写入 `window.__kbBootAt = Date.now()`；断言要求两侧都是 `number` 且严格相等。实测 `1794674180883 → 1794674180883`（桌面）、`1794674202126 → 1794674202126`（移动） |
 | A2 | 计数 `.boot-loading` 的出现次数 | 应用代码里**从来不存在** `.boot-loading` 这个类名（首屏用的是 `.state-loading`），所以计数恒为 0 | `collector.js` 改为对 `.state-loading`/`.boot-loading` 判「是否整页加载」：作为 `#app` 直接子级、或出现在 `.page-content` 之外才计数；`measure()` 里 `bootLoading` 同时检查 `#app > .state-loading` 与 `.app-shell` 缺失。实测两端 `bootSpinner=0` |
 
-加固后重跑：desktop 15 pass / 0 fail / 1 skip、mobile 13 pass / 0 fail / 3 skip → **28 pass / 0 fail / 4 skip，退出码 0**（`docs/evidence/after-nav-check.json`，构建 `index-pVuRVRx_.js`）。
+加固后重跑：desktop 15 pass / 0 fail / 1 skip、mobile 13 pass / 0 fail / 3 skip → **28 pass / 0 fail / 4 skip，退出码 0**（`docs/evidence/after-nav-check.json`，构建 `index-UFD7i_dS.js`）。
 
 **变异验证（证明这两条现在会真的红）**：把加固后的脚本对着**旧构建** `index-BMUxdCWx.js`（§7.1 的同一份 dist 快照）跑 desktop 轮：
 

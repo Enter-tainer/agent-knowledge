@@ -79,10 +79,11 @@ function appendPlainDir(item: HTMLElement, node: TreeNode, count: number, contex
 /**
  * 「目录 + 同名笔记」合并行（`/root/test.md` + `/root/test/aaa.md` → 只有一行 `test`）：
  * - 点名称 → 打开那篇笔记（锚点，交给 router 的 SPA 接管）；
- * - 点右侧箭头 → 展开/收起子目录（button，`aria-expanded`）。
+ * - 点右侧箭头**或中间的「N 篇」徽标** → 展开/收起子目录（button，`aria-expanded`）。
  *
- * 用「a + button」两个并列可交互元素，而不是把 a 塞进 summary，
- * 避免嵌套交互控件的可访问性问题与点击歧义。箭头放在右侧，与合并行的视觉预期一致。
+ * 用「a + 两个并列 button」而不是把 a 塞进 summary，避免嵌套交互控件的可访问性问题
+ * 与点击歧义。两个按钮共用同一份 `aria-controls` / `aria-expanded`，点哪个都同步。
+ * 徽标可点是用户明确提的需求：手自然落在「8 篇」那里，点它也应该能展树。
  */
 function appendMergedDir(item: HTMLElement, node: TreeNode, count: number, context: ResolvedContext): void {
   const open = context.openPaths.has(node.path);
@@ -92,33 +93,55 @@ function appendMergedDir(item: HTMLElement, node: TreeNode, count: number, conte
   appendNodes(childList, node.children, context);
 
   const label = node.name;
-  const toggle = el(
+  const toggles: HTMLButtonElement[] = [];
+  const ariaToggleLabel = (isOpen: boolean): string => `${isOpen ? '收起' : '展开'} ${label} 的子目录`;
+  const applyState = (nextOpen: boolean): void => {
+    childList.hidden = !nextOpen;
+    for (const button of toggles) {
+      button.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+      button.setAttribute('aria-label', ariaToggleLabel(nextOpen));
+      button.title = ariaToggleLabel(nextOpen);
+    }
+  };
+  const onToggleClick = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    applyState(childList.hidden);
+    context.onToggle?.(node.path, childList.hidden === false);
+  };
+
+  const caretToggle = el(
     'button',
     {
       type: 'button',
       class: 'tree-dir-toggle',
       'aria-expanded': open ? 'true' : 'false',
       'aria-controls': listId,
-      'aria-label': `${open ? '收起' : '展开'} ${label} 的子目录`,
-      onclick: (event: Event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        const nextOpen = childList.hidden;
-        childList.hidden = !nextOpen;
-        toggle.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
-        toggle.setAttribute('aria-label', `${nextOpen ? '收起' : '展开'} ${label} 的子目录`);
-        context.onToggle?.(node.path, nextOpen);
-      },
+      'aria-label': ariaToggleLabel(open),
+      title: ariaToggleLabel(open),
+      onclick: onToggleClick,
     },
     el('span', { class: 'tree-caret', 'aria-hidden': 'true' }),
   );
+
+  const countToggle = el('button', {
+    type: 'button',
+    class: 'tree-count tree-count-btn',
+    'aria-expanded': open ? 'true' : 'false',
+    'aria-controls': listId,
+    'aria-label': ariaToggleLabel(open),
+    title: ariaToggleLabel(open),
+    onclick: onToggleClick,
+    text: `${count} 篇`,
+  });
+  toggles.push(caretToggle, countToggle);
 
   const row = el(
     'div',
     { class: 'tree-dir-row', 'data-dir-path': node.path, 'data-merged': '1' },
     docLink(node.path, node.doc?.title || node.name, context.currentPath, 'tree-doc tree-doc-inline'),
-    el('span', { class: 'tree-count', text: `${count} 篇` }),
-    toggle,
+    countToggle,
+    caretToggle,
   );
 
   item.appendChild(row);

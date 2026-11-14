@@ -92,7 +92,7 @@ node scripts/check-private.mjs   # 必须退出码 0
 | B5 | drawer（移动） | 抽屉 `role=dialog` + `aria-modal=true`；Esc / 点遮罩 / 点链接都关闭；焦点回触发按钮；无残留 `no-scroll` |
 | B6 | not-found | 404 与「笔记不存在」都在 shell 内、保留侧边栏、无整页 spinner |
 | B7 | tree-failure | 用 `network route **/api/tree* --abort` 打断树请求：侧边栏出现可重试错误、正文仍可用；`unroute` 后点重试恢复 |
-| B8 | tour | 「目录 + 同名笔记」只出现一行 `.tree-dir-row[data-dir-path]`，行内同时有 `a.tree-doc` 与 `.tree-dir-toggle`（`aria-expanded` / `aria-controls` 指向的子树可见性一致） |
+| B8 | tour | 「目录 + 同名笔记」只出现一行 `.tree-dir-row[data-dir-path]`，行内同时有 `a.tree-doc`、`.tree-dir-toggle` 与可点的「N 篇」徽标 `.tree-count-btn`（三者同一 `aria-controls`，`aria-expanded` / 子树可见性一致；点徽标与点箭头等价） |
 | C4 | audit | 全程 `console.error` / `pageerror` / `unhandledrejection` 为 0；无**非预期** 4xx/5xx |
 | C5 | tour / drawer | 导航后焦点落在 `.page-content` 内；侧边栏有 `nav[aria-label]`；抽屉内 Tab 不逃出（焦点陷阱） |
 

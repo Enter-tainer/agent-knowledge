@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-14T16:36:19.557Z",
+  "generatedAt": "2026-11-14T17:19:25.084Z",
   "base": "http://127.0.0.1:8787",
   "node": "v24.18.1",
   "platform": "win32-x64",
@@ -18,14 +18,14 @@
     "B5": "抽屉：Esc/遮罩/点链接都关闭、焦点回触发按钮、无残留 no-scroll、（窄屏）",
     "B6": "404 / 页面级错误态仍在 shell 内并保留侧边栏",
     "B7": "目录树加载失败：侧边栏显示可重试错误，正文仍可用；重试后树恢复",
-    "B8": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc 与 .tree-dir-toggle(aria-expanded/aria-controls)，无重复行",
+    "B8": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc、.tree-dir-toggle 与可点的「N 篇」徽标（三者同 aria-controls），无重复行",
     "C4": "巡览全程无 console.error / pageerror / 非预期 4xx-5xx",
     "C5": "导航后焦点落在内容区；侧边栏 nav[aria-label]；抽屉 role=dialog aria-modal"
   },
   "build": {
     "base": "http://127.0.0.1:8787",
     "indexStatus": 200,
-    "asset": "index-pVuRVRx_.js",
+    "asset": "index-UFD7i_dS.js",
     "htmlTitle": "私有知识库",
     "healthStatus": 200,
     "health": {
@@ -64,9 +64,9 @@
     "desktop": {
       "profile": "desktop",
       "viewport": "1280x900",
-      "session": "kbux-e2e-63096-desktop",
-      "startedAt": "2026-11-14T16:36:19.724Z",
-      "durationMs": 21228,
+      "session": "kbux-e2e-53284-desktop",
+      "startedAt": "2026-11-14T17:19:25.664Z",
+      "durationMs": 21719,
       "phases": [
         {
           "name": "viewport",
@@ -76,7 +76,7 @@
         {
           "name": "tour",
           "ok": true,
-          "ms": 10978
+          "ms": 11030
         },
         {
           "name": "drawer",
@@ -86,27 +86,27 @@
         {
           "name": "tree-failure",
           "ok": true,
-          "ms": 2077
+          "ms": 2133
         },
         {
           "name": "deep-link",
           "ok": true,
-          "ms": 1097
+          "ms": 1132
         },
         {
           "name": "edit",
           "ok": true,
-          "ms": 1247
+          "ms": 1266
         },
         {
           "name": "not-found",
           "ok": true,
-          "ms": 2102
+          "ms": 2143
         },
         {
           "name": "audit",
           "ok": true,
-          "ms": 150
+          "ms": 169
         }
       ],
       "assertions": [
@@ -115,13 +115,13 @@
           "title": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
           "status": "pass",
           "details": [
-            "启动时 navigation 条目=1、timeOrigin=1794674180866",
-            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794674180883→1794674180883"
+            "启动时 navigation 条目=1、timeOrigin=1794676767029",
+            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794676767050→1794676767050"
           ],
           "measured": {
             "bootNavCount": 1,
-            "bootTimeOrigin": 1794674180865.6,
-            "bootAt": 1794674180883,
+            "bootTimeOrigin": 1794676767028.6,
+            "bootAt": 1794676767050,
             "finalNavCount": 1,
             "timeOriginStable": true,
             "bootAtStable": true
@@ -260,11 +260,11 @@
           "title": "home→doc→另一篇 doc：侧边栏 DOM 引用不变、scrollTop 不被重置、/api/tree ≤1 次",
           "status": "pass",
           "details": [
-            "侧边栏引用不变=true、scrollTop 120→354、本次导航 /api/tree=0 次"
+            "侧边栏引用不变=true、scrollTop 120→197、本次导航 /api/tree=0 次"
           ],
           "measured": {
             "b3ScrollTopBefore": 120,
-            "b3ScrollTopAfter": 354,
+            "b3ScrollTopAfter": 197,
             "b3TreeRequests": 0
           }
         },
@@ -324,11 +324,11 @@
         },
         {
           "id": "B8",
-          "title": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc 与 .tree-dir-toggle(aria-expanded/aria-controls)，无重复行",
+          "title": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc、.tree-dir-toggle 与可点的「N 篇」徽标（三者同 aria-controls），无重复行",
           "status": "pass",
           "details": [
             "同名合并行：doc-02（行数=1）；doc-08（行数=1）；doc-16（行数=1）；doc-27（行数=1）",
-            "合并行 toggle「doc-16」：aria-expanded true→false、子列表 hidden=true"
+            "合并行「doc-16」：箭头 aria-expanded true→false（徽标同步=false），点「6 篇」徽标 true（箭头同步=true、子列表 hidden=false）"
           ],
           "measured": {
             "b8Collisions": [
@@ -354,10 +354,17 @@
               }
             ],
             "b8Toggle": {
-              "after": "false",
+              "afterBadge": "true",
+              "afterCaret": "false",
+              "badgeControls": "tree-children-2-8",
+              "badgeLabel": "6 篇",
+              "badgeSynced": "false",
               "before": "true",
+              "caretSynced": "true",
+              "controls": "tree-children-2-8",
               "hasControls": true,
-              "hiddenAfter": true
+              "hiddenAfterBadge": false,
+              "hiddenAfterCaret": true
             }
           }
         },
@@ -404,9 +411,9 @@
     "mobile": {
       "profile": "mobile",
       "viewport": "390x844",
-      "session": "kbux-e2e-63096-mobile",
-      "startedAt": "2026-11-14T16:36:40.952Z",
-      "durationMs": 26155,
+      "session": "kbux-e2e-53284-mobile",
+      "startedAt": "2026-11-14T17:19:47.383Z",
+      "durationMs": 26386,
       "phases": [
         {
           "name": "viewport",
@@ -416,37 +423,37 @@
         {
           "name": "tour",
           "ok": true,
-          "ms": 9759
+          "ms": 9800
         },
         {
           "name": "drawer",
           "ok": true,
-          "ms": 6208
+          "ms": 6245
         },
         {
           "name": "tree-failure",
           "ok": true,
-          "ms": 2062
+          "ms": 2092
         },
         {
           "name": "deep-link",
           "ok": true,
-          "ms": 1141
+          "ms": 1109
         },
         {
           "name": "edit",
           "ok": true,
-          "ms": 1242
+          "ms": 1238
         },
         {
           "name": "not-found",
           "ok": true,
-          "ms": 2077
+          "ms": 2075
         },
         {
           "name": "audit",
           "ok": true,
-          "ms": 151
+          "ms": 146
         }
       ],
       "assertions": [
@@ -455,13 +462,13 @@
           "title": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
           "status": "pass",
           "details": [
-            "启动时 navigation 条目=1、timeOrigin=1794674202108",
-            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794674202126→1794674202126"
+            "启动时 navigation 条目=1、timeOrigin=1794676788635",
+            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794676788657→1794676788657"
           ],
           "measured": {
             "bootNavCount": 1,
-            "bootTimeOrigin": 1794674202107.6,
-            "bootAt": 1794674202126,
+            "bootTimeOrigin": 1794676788635.1,
+            "bootAt": 1794676788657,
             "finalNavCount": 1,
             "timeOriginStable": true,
             "bootAtStable": true
@@ -647,7 +654,7 @@
         },
         {
           "id": "B8",
-          "title": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc 与 .tree-dir-toggle(aria-expanded/aria-controls)，无重复行",
+          "title": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc、.tree-dir-toggle 与可点的「N 篇」徽标（三者同 aria-controls），无重复行",
           "status": "pass",
           "details": [
             "同名合并行：doc-02（行数=1）；doc-08（行数=1）；doc-16（行数=1）；doc-27（行数=1）"

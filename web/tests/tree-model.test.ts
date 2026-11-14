@@ -168,6 +168,46 @@ describe('renderTree：合并行 DOM 契约（B8）', () => {
     expect(onToggle).toHaveBeenLastCalledWith('示例库', false);
   });
 
+  it('「N 篇」徽标也是展开/收起按钮，点击与箭头等价', () => {
+    const onToggle = vi.fn();
+    const root = renderTree(tree, { onToggle });
+    const row = mergedRow(root, '示例库');
+    const caret = row.querySelector<HTMLButtonElement>('.tree-dir-toggle')!;
+    const badge = row.querySelector<HTMLButtonElement>('.tree-count-btn')!;
+    expect(badge.tagName).toBe('BUTTON');
+    expect(badge.textContent).toMatch(/^\d+ 篇$/);
+    expect(badge.className).toContain('tree-count');
+
+    const listId = caret.getAttribute('aria-controls')!;
+    // 两个按钮指向同一个受控区域，初始状态一致
+    expect(badge.getAttribute('aria-controls')).toBe(listId);
+    expect(badge.getAttribute('aria-expanded')).toBe('false');
+    const list = root.querySelector<HTMLElement>(`#${CSS.escape(listId)}`)!;
+    expect(list.hidden).toBe(true);
+
+    badge.click();
+    expect(list.hidden).toBe(false);
+    expect(badge.getAttribute('aria-expanded')).toBe('true');
+    expect(caret.getAttribute('aria-expanded')).toBe('true');
+    expect(onToggle).toHaveBeenCalledWith('示例库', true);
+
+    // 再用箭头收起，徽标状态也要跟着回到 false
+    caret.click();
+    expect(list.hidden).toBe(true);
+    expect(badge.getAttribute('aria-expanded')).toBe('false');
+    expect(onToggle).toHaveBeenLastCalledWith('示例库', false);
+  });
+
+  it('点「N 篇」徽标不会导航（徽标不是链接，也没有弹出新页面）', () => {
+    const root = renderTree(tree);
+    const badge = mergedRow(root, '示例库').querySelector<HTMLButtonElement>('.tree-count-btn')!;
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    badge.dispatchEvent(click);
+    // 徽标自己的 click 处理会 preventDefault；也未冒泡到行内的文档链接
+    expect(click.defaultPrevented).toBe(true);
+    expect(badge.closest('a')).toBeNull();
+  });
+
   it('openPaths 命中时默认展开，并标记当前文档 aria-current', () => {
     const root = renderTree(tree, { openPaths: new Set(['示例库']), currentPath: '示例库' });
     const row = mergedRow(root, '示例库');
