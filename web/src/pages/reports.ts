@@ -3,11 +3,10 @@ import type { LinksReport, OrphansResponse, UnresolvedReport } from '../api/type
 import { humanizeError } from '../api/errors';
 import { docUrl } from '../router';
 import { el, parentPath } from '../ui/dom';
-import { shell } from '../ui/shell';
+import type { PageView } from '../ui/view';
 
 /** `/reports`：断链 + 无入链。两个区块各自可重试，不再整页一句 internal error。 */
-export async function renderReports(): Promise<HTMLElement> {
-  document.title = '报告 · 私有知识库';
+export async function renderReports(): Promise<PageView> {
   const main = el('main', { class: 'reports-page' }, el('h1', { class: 'page-title', text: '报告' }));
   const linksBox = el('section', { class: 'report-section' });
   const orphansBox = el('section', { class: 'report-section' });
@@ -19,9 +18,7 @@ export async function renderReports(): Promise<HTMLElement> {
       const report = await api.reportLinks(true);
       linksBox.replaceChildren(unresolvedSection(asUnresolved(report)));
     } catch (err) {
-      linksBox.replaceChildren(
-        sectionError('断链检查失败', err, () => void loadLinks()),
-      );
+      linksBox.replaceChildren(sectionError('断链检查失败', err, () => void loadLinks()));
     }
   }
 
@@ -31,14 +28,16 @@ export async function renderReports(): Promise<HTMLElement> {
       const report: OrphansResponse = await api.orphans();
       orphansBox.replaceChildren(orphansSection(report));
     } catch (err) {
-      orphansBox.replaceChildren(
-        sectionError('无入链统计失败', err, () => void loadOrphans()),
-      );
+      orphansBox.replaceChildren(sectionError('无入链统计失败', err, () => void loadOrphans()));
     }
   }
 
-  await Promise.all([loadLinks(), loadOrphans()]);
-  return shell({ active: 'reports', content: main });
+  // 不 await：两个区块先各自显示 loading，随后独立填充 / 独立重试；
+  // 页面本身立即返回，导航不用等这两个请求（契约 §2.2 旧内容保留到新内容就绪）。
+  void loadLinks();
+  void loadOrphans();
+
+  return { node: main, active: 'reports', title: '报告 · 私有知识库' };
 }
 
 function loadingBlock(text: string): HTMLElement {
@@ -146,4 +145,3 @@ function orphansSection(data: OrphansResponse): HTMLElement {
   section.appendChild(list);
   return section;
 }
-

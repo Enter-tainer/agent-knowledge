@@ -1,0 +1,174 @@
+/* ==========================================================================
+   持久侧边栏补丁（web-nav-sidebar 修复）
+   基础样式仍在 app.css（.sidebar / .tree-* / .tree-drawer*），这里只补新结构。
+   ========================================================================== */
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.sidebar-head {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+.sidebar-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.sidebar-skeleton-row {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-soft) 0%, #eceef2 50%, var(--bg-soft) 100%);
+  background-size: 200% 100%;
+  animation: sidebar-shimmer 1.2s ease-in-out infinite;
+}
+
+.sidebar-skeleton-row:nth-child(2n) {
+  width: 72%;
+}
+
+.sidebar-skeleton-row:nth-child(3n) {
+  width: 86%;
+}
+
+@keyframes sidebar-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.sidebar-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+}
+
+.sidebar-error-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+/* 抽屉里的树与侧边栏共用 tree-* 样式；只去掉侧边栏专用内边距 */
+.drawer-tree .tree-list {
+  padding-bottom: 8px;
+}
+
+/* 与 .app-body 的上内边距对齐；桌面显示「目录 / N 篇」小标题 */
+.sidebar {
+  top: calc(var(--topbar-h) + 20px);
+}
+
+@media (min-width: 861px) {
+  .sidebar-head {
+    display: flex;
+    padding: 0 8px 8px;
+  }
+}
+
+@media (max-height: 520px) {
+  .sidebar {
+    max-height: calc(100vh - var(--topbar-h) - 24px);
+  }
+}
+
+/* ---------- 「目录 + 同名笔记」合并行（可点击打开 + 可展开） ---------- */
+
+.tree-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.tree-dir-row:hover {
+  background: var(--bg-soft);
+}
+
+.tree-dir-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tree-dir-toggle:hover {
+  background: var(--border);
+}
+
+.tree-dir-toggle .tree-caret {
+  transform: rotate(0deg);
+}
+
+.tree-dir-toggle[aria-expanded='true'] .tree-caret {
+  transform: rotate(90deg);
+}
+
+.tree-doc-inline {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-dir-row .tree-count {
+  margin-left: auto;
+  flex: none;
+}
+
+/* 普通目录行：箭头也放到右侧（与「目录+同名笔记」合并行一致） */
+.tree-dir-label > .tree-name {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tree-dir-label > .tree-count {
+  order: 2;
+  margin-left: auto;
+}
+
+.tree-dir-label > .tree-caret {
+  order: 3;
+  margin-left: 2px;
+  text-align: center;
+}
+
+.tree-dir-row .tree-dir-toggle {
+  margin-left: 2px;
+}

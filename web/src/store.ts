@@ -8,6 +8,8 @@ let inflight: Promise<TreeEntry[]> | null = null;
 export function invalidateTree(): void {
   cache = null;
   inflight = null;
+  // 持久侧边栏靠这个事件刷新目录（保存/改名后），页面自己不需要知道侧边栏存在。
+  window.dispatchEvent(new Event('kb:tree-invalidated'));
 }
 
 export async function loadTree(force = false): Promise<TreeEntry[]> {

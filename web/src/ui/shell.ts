@@ -1,141 +1,12 @@
-import { api, IS_MOCK } from '../api';
+/**
+ * 覆盖层与状态块：toast / choiceDialog / confirmDialog / 加载与错误占位。
+ *
+ * 顶栏与布局已移到 `ui/layout.ts`，这里不再构造整个页面 shell，
+ * 只提供页面内部会复用的交互零件（弹层、提示、空/错状态）。
+ */
+
 import { humanizeError } from '../api/errors';
-import { clearLeaveGuardDirty, confirmLeave, hasDirtyGuard } from '../navGuard';
-import { navigate } from '../router';
-import { loadTree } from '../store';
 import { el } from './dom';
-import { openNewNoteDialog } from './newNote';
-
-export type ActiveNav = 'home' | 'reports' | 'doc' | 'search' | 'edit';
-
-export interface ShellOptions {
-  active: ActiveNav;
-  searchQuery?: string;
-  content: HTMLElement;
-  /** 内容区是否放宽（编辑器用） */
-  wide?: boolean;
-}
-
-/** 顶部栏 + 内容区；所有页面都套这一层。 */
-export function shell(opts: ShellOptions): HTMLElement {
-  const searchInput = el('input', {
-    type: 'search',
-    name: 'q',
-    class: 'search-input',
-    placeholder: '搜索笔记（至少 2 个字）',
-    'aria-label': '搜索知识库',
-    value: opts.searchQuery ?? '',
-    autocomplete: 'off',
-    spellcheck: 'false',
-  });
-
-  const form = el(
-    'form',
-    {
-      class: 'search-form',
-      role: 'search',
-      onsubmit: (event: Event) => {
-        event.preventDefault();
-        const q = searchInput.value.trim();
-        if (q) void navigate(`/search?q=${encodeURIComponent(q)}`);
-      },
-    },
-    searchInput,
-    el('button', { type: 'submit', class: 'btn btn-search', text: '搜索' }),
-  );
-
-  const newBtn = el('button', {
-    type: 'button',
-    class: 'btn btn-primary',
-    text: '＋ 新建',
-    title: '写一篇新笔记',
-    onclick: () => void startNewNote(),
-  });
-
-  const exportBtn = el('button', {
-    type: 'button',
-    class: 'btn btn-ghost',
-    text: '导出',
-    title: '把全库笔记导出成 zip',
-    onclick: () => void exportAll(exportBtn),
-  });
-
-  const topbar = el(
-    'header',
-    { class: 'topbar' },
-    el(
-      'a',
-      { class: 'brand', href: '/', 'aria-label': '回到首页' },
-      el('span', { class: 'brand-dot' }),
-      el('span', { class: 'brand-text', text: '私有知识库' }),
-    ),
-    IS_MOCK ? el('span', { class: 'badge-mock', title: '本地 mock 数据（未接后端）', text: 'MOCK' }) : null,
-    form,
-    el(
-      'nav',
-      { class: 'nav' },
-      el('a', { href: '/', class: navClass(opts.active === 'home'), text: '目录' }),
-      el('a', { href: '/reports', class: navClass(opts.active === 'reports'), text: '报告' }),
-      newBtn,
-      exportBtn,
-    ),
-  );
-
-  return el('div', { class: `app-shell${opts.wide ? ' app-shell-wide' : ''}` }, topbar, opts.content);
-}
-
-async function startNewNote(): Promise<void> {
-  // 编辑页有未保存改动时，先问「保存 / 放弃 / 取消」，用户确认后再开新建路径弹层
-  if (hasDirtyGuard()) {
-    const leave = await confirmLeave();
-    if (!leave) return;
-    clearLeaveGuardDirty();
-  }
-  openNewNoteDialog();
-}
-function navClass(active: boolean): string {
-  return active ? 'nav-link nav-link-active' : 'nav-link';
-}
-
-function fileName(): string {
-  const now = new Date();
-  const pad = (n: number): string => String(n).padStart(2, '0');
-  return `knowledge-export-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.zip`;
-}
-
-function downloadBlob(blob: Blob, name: string): void {
-  const url = URL.createObjectURL(blob);
-  const a = el('a', { href: url, download: name });
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 10_000);
-}
-
-function formatSize(bytes: number): string {
-  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
-}
-
-async function exportAll(button: HTMLButtonElement): Promise<void> {
-  const original = button.textContent ?? '导出';
-  button.disabled = true;
-  button.textContent = '导出中…';
-  try {
-    const [blob, tree] = await Promise.all([
-      api.exportZip(),
-      loadTree().catch(() => []),
-    ]);
-    downloadBlob(blob, fileName());
-    const count = tree.length ? ` ${tree.length} 篇 ·` : '';
-    toast(IS_MOCK ? '已下载（mock 占位文件，不是真 zip）' : `已导出${count}${formatSize(blob.size)}，在浏览器的「下载」里查看`);
-  } catch (err) {
-    toast(`导出失败：${humanizeError(err)}`, 'error');
-  } finally {
-    button.disabled = false;
-    button.textContent = original;
-  }
-}
 
 /* ------------------------------------------------------------------ */
 /* toast                                                               */
@@ -183,8 +54,8 @@ function trapTab(event: KeyboardEvent, container: HTMLElement): void {
     (node) => node.offsetParent !== null,
   );
   if (focusables.length === 0) return;
-  const first = focusables[0];
-  const last = focusables[focusables.length - 1];
+  const first = focusables[0]!;
+  const last = focusables[focusables.length - 1]!;
   if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
     last.focus();
@@ -313,9 +184,7 @@ export function errorState(title: string, detail?: string, retry?: () => void): 
     { class: 'state state-error' },
     el('h2', { text: title }),
     detail ? el('p', { class: 'state-detail', text: detail }) : null,
-    retry
-      ? el('button', { type: 'button', class: 'btn btn-primary', text: '重试', onclick: retry })
-      : null,
+    retry ? el('button', { type: 'button', class: 'btn btn-primary', text: '重试', onclick: retry }) : null,
   );
 }
 

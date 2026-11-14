@@ -12,6 +12,7 @@ pnpm dev          # 默认 mock 模式（不依赖后端），http://127.0.0.1:5
 pnpm build        # tsc --noEmit && vite build → dist/index.html + dist/assets/*
 pnpm preview      # 本地预览构建产物（/api 仍需要真后端）
 pnpm typecheck    # 只查类型
+pnpm test         # jsdom 单测（router / 滚动恢复 / 持久布局 / 目录树合并）
 ```
 
 `pnpm dev` 默认用 `src/mock/notes/*.md` 里的 5 篇假笔记（表格 / callout / 双链 / 断链 / 无入链都有），
@@ -37,22 +38,61 @@ pnpm typecheck    # 只查类型
 
 ## 页面与路由（History API，无 router 库）
 
+顶层是**持久 shell**（`header.topbar` + `aside.sidebar` + `.page-content`），启动时挂载一次；
+导航只替换 `.page-content` 的子节点，所以顶栏、目录侧边栏、搜索框状态都不会被重建（详见下一节）。
+
 | 路由 | 内容 |
 |---|---|
-| `/` | 桌面：左侧可折叠路径树 + 右侧最近更新；手机：目录改为**全屏抽屉**（顶层目录默认收起、关闭按钮固定）。`/api/health.stale > 0` 时给「重建索引」按钮（真的调 `POST /api/admin/reindex`） |
-| `/d/<path>/` | 正文（表格可横滑 + 提示、callout、代码高亮、双链可点）+ **本页目录（heading 锚点）** + 「哪些笔记提到了这篇」/「这篇引用的笔记」+ 折叠的「版本信息」 |
-| `/edit/<path>/` | 桌面左右分栏、手机「源码 / 预览」Tab；保存带 `If-Match`；Ctrl/Cmd+S；**有未保存改动时拦截所有站内离开**（返回/取消/浏览器 back/顶栏链接） |
+| `/` | 「最近更新」列表（桌面/手机都有左侧目录）；`/api/health.stale > 0` 时给「重建索引」按钮（真的调 `POST /api/admin/reindex`） |
+| `/d/<path>/` | 正文（表格可横滑 + 提示、callout、代码高亮、双链可点）+ **本页目录（heading 锚点）** + 「哪些笔记提到了这篇」/「这篇引用的笔记」+ 折叠的「版本信息」。正文先出现，反链/出链面板随后各自填充，互不阻塞 |
+| `/edit/<path>/` | 桌面左右分栏、手机「源码 / 预览」Tab；保存带 `If-Match`；Ctrl/Cmd+S；**有未保存改动时拦截所有站内离开**（返回/取消/浏览器 back/顶栏链接）。编辑页是宽版，**不显示目录侧边栏** |
 | `/edit/<path>/?new=1` | 新建：空模板，首次保存用 `If-Match: *`；路径已被占用会提示打开现有的 |
 | `/search?q=` | 标题 + 所在小节 + 摘要（`<mark>`，已剥 frontmatter/标记）；空结果/1 字提示都给「回目录 / 清空重搜 / 示例词」 |
 | `/reports` | 断链、无入链；两个区块**各自可重试**，500 会显示「服务暂时不可用 + requestId」 |
 
-顶栏：目录 / 报告 / **＋ 新建** / 导出（导出后 toast 说明篇数与大小）。
+顶栏：目录 / 报告 / **＋ 新建** / 导出（导出后 toast 说明篇数与大小）；手机额外有一个「☰ 目录」按钮打开目录抽屉。
 
 路径在 URL 里逐段 `encodeURIComponent`，且**结尾带 `/`**（Vite dev / 静态托管 SPA fallback 对无扩展名路径更稳；
-`.../BLE 协议与 .dat 文件格式` 这种带点的路径如果不带尾斜杠会被当成静态文件 404）。
+`.../数据格式说明` 这种带点的路径如果不带尾斜杠会被当成静态文件 404）。
 
 `wikilink` 用的是短名（`[[笔输入通路与压感真相]]`），所以 `/d/<短名>/` 拿到 404 时会用目录树把它解析成
 真实路径、替换地址栏后再加载（等价于后端 §6.3 的「全库唯一文件名」规则）。
+
+## 布局与导航（持久 shell，2026-11 修复）
+
+```
+#app
+└─ .app-shell                      ← mount() 时创建一次，整场会话不重建
+   ├─ .nav-progress                ← 顶部 2px 进度条（忙碌 >150ms 才出现）
+   ├─ header.topbar                ← 品牌 / 搜索 / 导航 / 手机「☰ 目录」
+   └─ .app-body[data-sidebar=on|off]
+      ├─ aside.sidebar             ← 目录树；只做增量高亮/展开，不重建 DOM
+      └─ .page-content#main-content← 唯一替换点（tabindex=-1，aria-busy）
+```
+
+- 页面工厂（`src/pages/*`）只返回 `PageView`（`src/ui/view.ts`）：内容节点 + active/title/searchQuery/wide/showSidebar/currentPath/onMount/onTeardown。
+- 侧边栏在 **首页 / 文章 / 搜索 / 报告** 常驻；`/edit/` 宽版无侧边栏（手机也没有抽屉入口）。
+- 手机（≤860px）侧边栏隐藏，顶栏「☰ 目录」打开抽屉：`role=dialog`、焦点陷阱、Esc/遮罩/点链接即关闭、关闭后焦点回到按钮。
+- 滚动：`history.scrollRestoration='manual'`，`history.state.kbScrollY` 记录每个历史条目位置；push 导航回顶、浏览器前进/后退恢复原位置、带 `#hash` 的深链渲染后滚到锚点。
+- 目录树数据只拉一次（`store.loadTree` 缓存；实测整场会话 `/api/tree` = 1 次）；保存笔记后 `invalidateTree()` 触发侧边栏刷新，保留展开状态与滚动位置。
+- **同名「目录 + 笔记」合并**：vault 里 `示例库.md` 与 `示例库/` 同名（实测 4 处）。侧边栏只渲染一行：
+  点名称打开笔记，点行尾箭头展开子目录；纯目录仍是 `<details>` 整行展开。合并只发生在 `ui/tree-model.ts`，API 与 URL 不变。
+
+`docs/web-nav-sidebar-acceptance.md` 是这次修复的准出标准与验收记录（A/B/C 条款、基线证据、审查结论）。
+
+## 端到端验收（本地，需要真浏览器）
+
+```powershell
+# 1) 先起后端（同仓库根目录）：pnpm dev → http://127.0.0.1:8787（loopback 不鉴权、36 篇真实笔记）
+# 2) 用构建产物验收（推荐）：pnpm build 后由 wrangler dev 从 web/dist 提供
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out web/e2e/reports/last.json
+# 3) 或对 Vite dev server 验收（HMR，便于迭代）：
+$env:VITE_DEV_PROXY_TARGET='http://127.0.0.1:8787'; pnpm --dir web dev --host 127.0.0.1
+node web/e2e/nav-check.mjs --base http://127.0.0.1:5173
+```
+
+脚本用 `agent-browser`（Chromium/CDP）在桌面 1280×900 与移动 390×844 下逐条断言 A/B 条款，
+输出 PASS/FAIL 明细与 JSON；失败退出码 1。详见 `web/e2e/README.md`。
 
 ## 渲染管线（`src/markdown/`）
 
@@ -81,17 +121,30 @@ pnpm typecheck    # 只查类型
 web/
 ├── index.html
 ├── vite.config.ts          # base=/；dev 可代理 /api；构建 outDir=dist
+├── vitest.config.ts        # jsdom 单测（与仓库根的后端 vitest 配置互不影响）
 ├── src/
-│   ├── main.ts             # 启动 / 路由分发 / 错误兜底 / 深链锚点 / （仅 dev）window.__kb
-│   ├── router.ts           # parseRoute / navigate / 链接点击接管 / popstate+哈希处理
+│   ├── main.ts             # 启动：mount 持久 shell → showBoot → 路由分发 → layout.show(PageView)
+│   ├── router.ts           # parseRoute / navigate（push/scroll state）/ 链接点击接管 / popstate
 │   ├── navGuard.ts         # 离开守卫（编辑页脏检查，所有站内跳转共用）
-│   ├── store.ts            # 目录树缓存 + 短名→真实路径解析
+│   ├── store.ts            # 目录树缓存 + 短名→真实路径解析 + 失效事件 kb:tree-invalidated
 │   ├── api/                # contract.ts（KbApi）、http.ts（真接口）、mock.ts、types.ts、errors.ts（humanizeError）
 │   ├── markdown/           # 渲染管线 + 两个插件 + heading id
-│   ├── pages/              # home / doc / edit / search / reports
-│   ├── ui/                 # shell（顶栏/弹层/toast）、tree、dom、lifecycle、newNote（新建弹层/路径查重）
-│   ├── styles/app.css      # 全部样式（黑白灰 + 一个强调色，含移动端）
+│   ├── pages/              # home / doc / edit / search / reports（只返回 PageView）
+│   ├── ui/
+│   │   ├── layout.ts       # 持久 shell：顶栏/进度条/唯一内容替换点/焦点/滚动恢复
+│   │   ├── view.ts         # PageView / SidebarHandle / NavInfo 契约
+│   │   ├── sidebar.ts      # 常驻目录侧边栏：增量高亮、祖先展开、刷新、移动端抽屉入口
+│   │   ├── drawer.ts       # 通用抽屉（焦点陷阱 / Esc / 遮罩 / 导航即关）
+│   │   ├── tree-model.ts   # 目录树纯数据层（含同名「目录+笔记」合并）
+│   │   ├── tree.ts         # 目录树 DOM 渲染（details / 合并行）
+│   │   ├── scroll.ts       # history.state 滚动位置保存/恢复、#hash 深链
+│   │   ├── shell.ts        # toast / choiceDialog / confirmDialog / 加载与错误占位
+│   │   ├── dom.ts / lifecycle.ts / newNote.ts
+│   ├── styles/app.css      # 基础样式 + 持久 shell 布局 + 移动端
+│   ├── styles/sidebar.css  # 侧边栏/合并行/骨架屏补丁
 │   └── mock/notes/*.md     # 5 篇 mock 笔记（只在 mock 模式加载）
+├── e2e/                    # agent-browser 端到端验收脚本（nav-check.mjs）
+├── tests/                  # jsdom 单测（router/scroll/layout/tree-model）
 └── dist/                   # 构建产物（git 忽略）
 ```
 
@@ -187,7 +240,7 @@ P0/P1 全部处理：
   - 报告错误态：注入 500（带 requestId）→「服务暂时不可用，请稍后重试（请求 ID：…）」+ 重试，
     恢复后重试成功；正常态断链 0 / 无入链 3。
   - 新建：顶栏「＋ 新建」→ 默认路径 → 输入 `_webui/我的测试笔记` → 空模板编辑 → 保存 `If-Match:*`
-    → 创建成功、树 37 篇、地址栏去掉 `?new=1`；重复路径输入「索引与读取约定」提示「这个路径已经有笔记了」。
+    → 创建成功、树 37 篇、地址栏去掉 `?new=1`；重复路径输入「索引与约定」提示「这个路径已经有笔记了」。
   - 收尾清理：`DELETE /api/docs/_webui/我的测试笔记` → 404，`/api/health` = `{docs:36, stale:0}`，树 36 篇。
 - mock 模式另验：stale 提示条 +「重建索引」按钮（toast「搜索索引已重建完成」）、`/login` 走「页面不存在」、
   401 显示「没有访问权限」不跳登录。

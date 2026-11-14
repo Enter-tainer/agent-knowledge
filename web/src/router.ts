@@ -1,6 +1,14 @@
 /** 手写路由（不引 router 库）：History API + location.pathname + 离开守卫。 */
 
 import { confirmLeave, hasDirtyGuard } from './navGuard';
+import type { NavInfo } from './ui/view';
+import {
+  installScrollRestoration,
+  pushEntry,
+  replaceEntry,
+  replaceEntryKeepScroll,
+  saveScrollToCurrentEntry,
+} from './ui/scroll';
 
 export type Route =
   | { name: 'home' }
@@ -69,16 +77,18 @@ export function parseRoute(pathname: string = location.pathname, search: string 
  */
 export async function navigate(to: string, opts: { replace?: boolean } = {}): Promise<boolean> {
   if (!(await confirmLeave())) return false;
-  if (opts.replace) history.replaceState(null, '', to);
-  else history.pushState(null, '', to);
+  // 先把当前滚动位置存进「当前」历史条目，浏览器后退时才能恢复
+  saveScrollToCurrentEntry();
+  if (opts.replace) replaceEntry(to);
+  else pushEntry(to);
   currentUrl = to;
-  window.dispatchEvent(new Event('kb:navigate'));
+  window.dispatchEvent(new CustomEvent('kb:navigate', { detail: { kind: 'push' } }));
   return true;
 }
 
-/** 只改地址栏（如短名纠正为真实路径），不触发离开守卫。 */
+/** 只改地址栏（如短名纠正为真实路径），不触发离开守卫、不丢滚动位置。 */
 export function replaceUrl(to: string): void {
-  history.replaceState(null, '', to);
+  replaceEntryKeepScroll(to);
   currentUrl = to;
 }
 
@@ -87,8 +97,10 @@ export function currentRouteUrl(): string {
 }
 
 /** 路由变化时回调；同源普通链接点击自动接管为 SPA 跳转。 */
-export function startRouter(onChange: () => void): void {
-  window.addEventListener('popstate', () => {
+export function startRouter(onChange: (nav: NavInfo) => void): void {
+  installScrollRestoration();
+
+  window.addEventListener('popstate', (event) => {
     const target = location.pathname + location.search + location.hash;
     const samePage = target.split('#')[0] === currentUrl.split('#')[0];
     // 只是锚点变化（TOC/标题链接）：不重渲染，交给浏览器做 fragment 滚动
@@ -96,23 +108,25 @@ export function startRouter(onChange: () => void): void {
       currentUrl = target;
       return;
     }
+    const savedScroll = readScrollState(event.state);
     if (!hasDirtyGuard()) {
       currentUrl = target;
-      onChange();
+      onChange({ kind: 'pop', scrollY: savedScroll });
       return;
     }
     // 有未保存改动：先把地址栏恢复到当前页面，再弹确认；确认后才真正跳过去。
     history.pushState(null, '', currentUrl);
     void (async () => {
       if (!(await confirmLeave())) return;
-      history.replaceState(null, '', target);
+      replaceEntryKeepScroll(target);
       currentUrl = target;
-      onChange();
+      onChange({ kind: 'pop', scrollY: savedScroll });
     })();
   });
 
-  window.addEventListener('kb:navigate', () => {
-    onChange();
+  window.addEventListener('kb:navigate', (event) => {
+    const detail = (event as CustomEvent<{ kind?: string }>).detail;
+    onChange({ kind: detail?.kind === 'push' ? 'push' : 'retry', scrollY: null });
   });
 
   document.addEventListener('click', (event) => {
@@ -139,5 +153,11 @@ export function startRouter(onChange: () => void): void {
   });
 
   currentUrl = location.pathname + location.search + location.hash;
-  onChange();
+  onChange({ kind: 'initial', scrollY: null });
+}
+
+function readScrollState(state: unknown): number | null {
+  if (!state || typeof state !== 'object') return null;
+  const value = (state as Record<string, unknown>).kbScrollY;
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
 }

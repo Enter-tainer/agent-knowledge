@@ -11,14 +11,10 @@ import { clearLeaveGuard, setLeaveGuard, type LeaveGuard } from '../navGuard';
 import { docUrl, editUrl, navigate, replaceUrl } from '../router';
 import { invalidateTree } from '../store';
 import { el, shortHash } from '../ui/dom';
+import { layout } from '../ui/layout';
 import { onPageTeardown } from '../ui/lifecycle';
-import {
-  choiceDialog,
-  confirmDialog,
-  apiErrorState,
-  shell,
-  toast,
-} from '../ui/shell';
+import { apiErrorState, choiceDialog, confirmDialog, toast } from '../ui/shell';
+import type { PageView } from '../ui/view';
 import { loadDoc } from './data';
 
 /**
@@ -27,7 +23,7 @@ import { loadDoc } from './data';
  * 保存语义：已存在文档带当前 `If-Match: <hash>`；新建（`?new=1`）用 `If-Match: *`。
  * 有未保存改动时，所有站内跳转（返回阅读/取消/浏览器 back/顶栏链接）都会先弹确认。
  */
-export async function renderEdit(inputPath: string, isNew = false): Promise<HTMLElement> {
+export async function renderEdit(inputPath: string, isNew = false): Promise<PageView> {
   let doc: Doc | null = null;
   if (!isNew) {
     try {
@@ -37,10 +33,17 @@ export async function renderEdit(inputPath: string, isNew = false): Promise<HTML
         // 直接输地址进来但文档不存在：引导新建或回目录
         return editMissingPage(inputPath);
       }
-      return shell({
+      return {
+        // /edit/... 不显示侧边栏（契约 §2.9），错误页也保持一致
+        node: el(
+          'main',
+          { class: 'doc-page' },
+          apiErrorState(err, '这篇笔记加载失败', () => window.dispatchEvent(new Event('kb:navigate'))),
+        ),
         active: 'edit',
-        content: apiErrorState(err, '这篇笔记加载失败', () => window.dispatchEvent(new Event('kb:navigate'))),
-      });
+        title: '加载失败 · 私有知识库',
+        showSidebar: false,
+      };
     }
     if (doc.path !== inputPath) replaceUrl(editUrl(doc.path));
   }
@@ -55,7 +58,8 @@ export async function renderEdit(inputPath: string, isNew = false): Promise<HTML
 
   const stem = path.split('/').pop() ?? path;
   const title = doc?.title || stem;
-  document.title = `${modeNew ? '新建' : '编辑'}：${title} · 私有知识库`;
+  // 首次渲染的 document.title 由 layout 统一设置（PageView.title），这里只算好交给它
+  const pageTitle = `${modeNew ? '新建' : '编辑'}：${title} · 私有知识库`;
 
   const textarea = el('textarea', {
     class: 'edit-textarea',
@@ -212,9 +216,9 @@ export async function renderEdit(inputPath: string, isNew = false): Promise<HTML
     if (modeNew) {
       modeNew = false;
       replaceUrl(editUrl(path));
-      // 新建成功后立刻把标题从「新建：…」切成「编辑：…」，不用等刷新
+      // 新建成功后立刻把标题从「新建：…」切成「编辑：…」，不用等刷新。
       titleEl.textContent = `编辑：${stem}`;
-      document.title = `编辑：${stem} · 私有知识库`;
+      layout.setTitle(`编辑：${stem} · 私有知识库`);
       subtitleEl.textContent = path;
     }
     refreshMeta();
@@ -408,27 +412,40 @@ export async function renderEdit(inputPath: string, isNew = false): Promise<HTML
   window.addEventListener('resize', layoutHeight);
   window.setTimeout(layoutHeight, 0);
 
-  onPageTeardown(() => {
+  /**
+   * 页面级清理：既挂在全局 `onPageTeardown`（旧路径），也作为 `PageView.onTeardown`
+   * 交给 layout（契约 §2：下一次替换前调用）。两处可能都会触发，所以必须幂等。
+   */
+  function teardown(): void {
     clearLeaveGuard(guard);
     document.removeEventListener('keydown', onKeydown);
     window.removeEventListener('beforeunload', onBeforeUnload);
     window.removeEventListener('resize', layoutHeight);
     if (debounceTimer) window.clearTimeout(debounceTimer);
-  });
+  }
+
+  onPageTeardown(teardown);
 
   renderPreview();
   refreshMeta();
   setStatus(modeNew ? '新笔记：写点内容再保存' : '✓ 已加载', modeNew ? 'idle' : 'ok');
 
-  return shell({ active: 'edit', wide: true, content: page });
+  return {
+    node: page,
+    active: 'edit',
+    title: pageTitle,
+    wide: true,
+    // 契约 §2.9：编辑页宽版、不显示侧边栏（移动端也不给抽屉按钮）
+    showSidebar: false,
+    onTeardown: teardown,
+  };
 }
 
 /** 直接访问不存在的 /edit/<path>：给「新建这篇」与「回目录」，不显示后端英文。 */
-function editMissingPage(inputPath: string): HTMLElement {
+function editMissingPage(inputPath: string): PageView {
   const stem = inputPath.split('/').pop() ?? inputPath;
-  return shell({
-    active: 'edit',
-    content: el(
+  return {
+    node: el(
       'main',
       { class: 'doc-page' },
       el('div', { class: 'doc-toolbar' }, el('a', { class: 'back-link', href: '/', text: '← 目录' })),
@@ -448,5 +465,8 @@ function editMissingPage(inputPath: string): HTMLElement {
         ),
       ),
     ),
-  });
+    active: 'edit',
+    title: '没有这篇笔记 · 私有知识库',
+    showSidebar: false,
+  };
 }

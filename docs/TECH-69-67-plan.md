@@ -126,7 +126,7 @@ ticket 里的两个问题：「要不要用 R2？能不能全都存 D1？」—�
 
 ### ADR-3 链接与反链：解析结果落表，rename 按位置改写
 
-`links(src_doc_id, dst_doc_id NULL, target_raw, form, line, col)`；`dst_doc_id IS NULL` 即断链（当前语料 0 条，但 schema 必须允许）。反链 = `SELECT src WHERE dst=?` + 按源去重、显示提及次数（与 Obsidian 面板一致）。rename 只改写 `[[旧stem]]` 的**目标文本**（保留别名/锚点结构），按 `(line, col, raw)` 定位，禁止全文替换（正文里 `案例库` 这类词会误伤），改完整库重算解析并断言断链 0。
+`links(src_doc_id, dst_doc_id NULL, target_raw, form, line, col)`；`dst_doc_id IS NULL` 即断链（当前语料 0 条，但 schema 必须允许）。反链 = `SELECT src WHERE dst=?` + 按源去重、显示提及次数（与 Obsidian 面板一致）。rename 只改写 `[[旧stem]]` 的**目标文本**（保留别名/锚点结构），按 `(line, col, raw)` 定位，禁止全文替换（正文里 `示例库` 这类词会误伤），改完整库重算解析并断言断链 0。
 
 ### ADR-4 写入：hash 乐观锁 + batch 事务 + 显式维护 FTS（不用触发器）
 
@@ -269,7 +269,7 @@ scan(text):
 -- 文档：工作副本（raw = 完整 md 原文，含 frontmatter）
 CREATE TABLE documents (
   id                INTEGER PRIMARY KEY,
-  path              TEXT NOT NULL UNIQUE,        -- vault 相对路径，不含 .md（例：示例目录/示例设备逆向/BLE 协议与 .dat 文件格式）
+  path              TEXT NOT NULL UNIQUE,        -- vault 相对路径，不含 .md（例：示例目录/示例设备逆向/数据格式说明）
   title             TEXT NOT NULL,               -- frontmatter.title 或首个 H1 或 stem
   raw               TEXT NOT NULL,               -- md 原文（≤1.5MB 守卫）
   body_hash         TEXT NOT NULL,               -- sha256(raw)，乐观锁 + R2 镜像去重
