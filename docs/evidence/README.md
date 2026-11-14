@@ -8,7 +8,7 @@
 | 文件 | 说明 |
 |---|---|
 | `baseline-nav-check.json` | **修复前**：HEAD 旧构建（`index-BMUxdCWx.js`）在 36 篇真实语料上的 full sweep（桌面 1280×900 + 移动 390×844） |
-| `after-nav-check.json` | **修复后**：新构建产物（`index-DOWeIDet.js`）同一脚本、同一数据的 full sweep |
+| `after-nav-check.json` | **修复后**：新构建产物（`index-pVuRVRx_.js`）同一脚本、同一数据的 full sweep |
 
 两份报告的 `build.asset` 字段写明被测 bundle，`fixture` 字段写明自动选中的巡览文档与
 「目录+同名笔记」碰撞列表，可直接对比。
@@ -29,7 +29,7 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/base
 
 ## 修复后结果（after-nav-check.json）
 
-被测产物 `index-DOWeIDet.js`（`pnpm build` 后由 `wrangler dev` 在 8787 提供），同一份 36 篇真实语料：
+被测产物 `index-pVuRVRx_.js`（`pnpm build` 后由 `wrangler dev` 在 8787 提供），同一份 36 篇真实语料：
 
 | profile | pass | fail | skip |
 |---|---|---|---|
@@ -53,7 +53,7 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/base
 
 | 失败条款 | 基线实测 | 对应问题 |
 |---|---|---|
-| **A2** | 每次导航 `.app-shell` / `.topbar` / `aside.sidebar` 全被移除并重建（巡览共记到 12 次移除、9 次 `.boot-loading` 整页 spinner） | P1 整页刷新观感 |
+| **A2** | 每次导航 `.app-shell` / `.topbar` / `aside.sidebar` 全被移除并重建（桌面轮累计记到 8 次 `.app-shell`、3 次 `aside.sidebar` 移除，整页 spinner 累计 9 次） | P1 整页刷新观感 |
 | **A4** | 根本没有 `.page-content` 容器（`内容子节点=-1`），`aria-busy` 从未出现 | P1 |
 | **A3** | 导航后顶栏搜索框被重建，值从「压感」丢成 `""` | P1（顶栏每页重建） |
 | **A5** | push 后回顶正常，但 back/forward 的 `scrollY` 都是 0（记录值 400 / 300 丢失） | P1（无滚动恢复） |

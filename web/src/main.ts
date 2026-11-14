@@ -76,6 +76,17 @@ async function render(nav: NavInfo): Promise<void> {
   }
 }
 
+/**
+ * 启动时间戳，供端到端脚本证明「全程只有一次文档加载」。
+ *
+ * 必须在 `mount()` 之前写：E2E 的 A1 断言读它，若它随首屏渲染一起出现，
+ * 断言就变成「null === null」的恒真式（三轮审查都点过这个假绿）。
+ */
+interface BootProbeWindow extends Window {
+  __kbBootAt?: number;
+}
+(window as BootProbeWindow).__kbBootAt = Date.now();
+
 const sidebar = createSidebar();
 layout.mount({ sidebar });
 layout.showBoot();

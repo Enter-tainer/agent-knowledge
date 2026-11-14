@@ -1,12 +1,12 @@
 {
-  "generatedAt": "2026-11-14T16:10:05.097Z",
+  "generatedAt": "2026-11-14T16:36:19.557Z",
   "base": "http://127.0.0.1:8787",
   "node": "v24.18.1",
   "platform": "win32-x64",
   "agentBrowser": "agent-browser 0.41.0",
   "criteria": {
-    "A1": "巡览全程 performance navigation 条目=1，__kbBootAt/timeOrigin 不变",
-    "A2": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无 .boot-loading 整页 spinner",
+    "A1": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
+    "A2": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无整页 spinner（.state-loading 不越出 .page-content）",
     "A3": "顶栏搜索框值跨导航保留、未被抢焦点；搜索页保留 ?q=",
     "A4": ".page-content 导航期间从不为空，aria-busy 加载期为 true、完成后清除",
     "A5": "push 进入回顶；后退/前进恢复各自 scrollY；#hash 深链渲染后滚到锚点",
@@ -25,7 +25,7 @@
   "build": {
     "base": "http://127.0.0.1:8787",
     "indexStatus": 200,
-    "asset": "index-CTV82R9k.js",
+    "asset": "index-pVuRVRx_.js",
     "htmlTitle": "私有知识库",
     "healthStatus": 200,
     "health": {
@@ -64,9 +64,9 @@
     "desktop": {
       "profile": "desktop",
       "viewport": "1280x900",
-      "session": "kbux-e2e-64272-desktop",
-      "startedAt": "2026-11-14T16:10:05.285Z",
-      "durationMs": 20842,
+      "session": "kbux-e2e-63096-desktop",
+      "startedAt": "2026-11-14T16:36:19.724Z",
+      "durationMs": 21228,
       "phases": [
         {
           "name": "viewport",
@@ -76,7 +76,7 @@
         {
           "name": "tour",
           "ok": true,
-          "ms": 10796
+          "ms": 10978
         },
         {
           "name": "drawer",
@@ -86,49 +86,50 @@
         {
           "name": "tree-failure",
           "ok": true,
-          "ms": 2048
+          "ms": 2077
         },
         {
           "name": "deep-link",
           "ok": true,
-          "ms": 1106
+          "ms": 1097
         },
         {
           "name": "edit",
           "ok": true,
-          "ms": 1245
+          "ms": 1247
         },
         {
           "name": "not-found",
           "ok": true,
-          "ms": 2105
+          "ms": 2102
         },
         {
           "name": "audit",
           "ok": true,
-          "ms": 146
+          "ms": 150
         }
       ],
       "assertions": [
         {
           "id": "A1",
-          "title": "巡览全程 performance navigation 条目=1，__kbBootAt/timeOrigin 不变",
+          "title": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
           "status": "pass",
           "details": [
-            "启动时 navigation 条目=1、timeOrigin=1794672606393",
-            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=null→null"
+            "启动时 navigation 条目=1、timeOrigin=1794674180866",
+            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794674180883→1794674180883"
           ],
           "measured": {
             "bootNavCount": 1,
-            "bootTimeOrigin": 1794672606393.4,
-            "bootAt": null,
+            "bootTimeOrigin": 1794674180865.6,
+            "bootAt": 1794674180883,
             "finalNavCount": 1,
-            "timeOriginStable": true
+            "timeOriginStable": true,
+            "bootAtStable": true
           }
         },
         {
           "id": "A2",
-          "title": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无 .boot-loading 整页 spinner",
+          "title": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无整页 spinner（.state-loading 不越出 .page-content）",
           "status": "pass",
           "details": [
             "首屏 shell/topbar/aside.sidebar=true/true/true",
@@ -403,9 +404,9 @@
     "mobile": {
       "profile": "mobile",
       "viewport": "390x844",
-      "session": "kbux-e2e-64272-mobile",
-      "startedAt": "2026-11-14T16:10:26.128Z",
-      "durationMs": 25673,
+      "session": "kbux-e2e-63096-mobile",
+      "startedAt": "2026-11-14T16:36:40.952Z",
+      "durationMs": 26155,
       "phases": [
         {
           "name": "viewport",
@@ -415,59 +416,60 @@
         {
           "name": "tour",
           "ok": true,
-          "ms": 9631
+          "ms": 9759
         },
         {
           "name": "drawer",
           "ok": true,
-          "ms": 6083
+          "ms": 6208
         },
         {
           "name": "tree-failure",
           "ok": true,
-          "ms": 2050
+          "ms": 2062
         },
         {
           "name": "deep-link",
           "ok": true,
-          "ms": 1101
+          "ms": 1141
         },
         {
           "name": "edit",
           "ok": true,
-          "ms": 1235
+          "ms": 1242
         },
         {
           "name": "not-found",
           "ok": true,
-          "ms": 2037
+          "ms": 2077
         },
         {
           "name": "audit",
           "ok": true,
-          "ms": 140
+          "ms": 151
         }
       ],
       "assertions": [
         {
           "id": "A1",
-          "title": "巡览全程 performance navigation 条目=1，__kbBootAt/timeOrigin 不变",
+          "title": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
           "status": "pass",
           "details": [
-            "启动时 navigation 条目=1、timeOrigin=1794672627248",
-            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=null→null"
+            "启动时 navigation 条目=1、timeOrigin=1794674202108",
+            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794674202126→1794674202126"
           ],
           "measured": {
             "bootNavCount": 1,
-            "bootTimeOrigin": 1794672627247.9,
-            "bootAt": null,
+            "bootTimeOrigin": 1794674202107.6,
+            "bootAt": 1794674202126,
             "finalNavCount": 1,
-            "timeOriginStable": true
+            "timeOriginStable": true,
+            "bootAtStable": true
           }
         },
         {
           "id": "A2",
-          "title": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无 .boot-loading 整页 spinner",
+          "title": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无整页 spinner（.state-loading 不越出 .page-content）",
           "status": "pass",
           "details": [
             "首屏 shell/topbar/aside.sidebar=true/true/true",

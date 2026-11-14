@@ -4,7 +4,7 @@
  * 在**新文档的最早时机**安装（早于应用脚本），因此能记录到首屏与每次导航：
  *  - console.error / window error / unhandledrejection（C4）
  *  - `.app-shell` / `.topbar` / `aside.sidebar` 的移除（A2）
- *  - `.boot-loading` 整页 spinner 的出现次数（A2）
+ *  - 整页 spinner 的出现次数（.state-loading 出现在 .page-content 之外，A2）
  *  - `.page-content[aria-busy]` 的 true/false 次数（A4）
  *  - 导航进行中 `.page-content` 为空的采样次数（A4）
  *
@@ -82,7 +82,15 @@
       if (record.type === 'childList') {
         for (const node of record.removedNodes) recordRemoved(node);
         for (const node of record.addedNodes) {
-          if (isEl(node) && node.matches('.boot-loading')) state.bootLoadingAdded += 1;
+          if (!isEl(node)) continue;
+          // 「整页 spinner」的真实判据（旧版只看 `.boot-loading`，而应用代码里
+          // 根本没有这个类名，所以计数恒为 0 —— 假绿）：
+          //  1) 根容器 `.app-shell` 被直接塞进一个加载态（说明走了整页加载分支）；
+          //  2) 加载态出现在 `.page-content` 之外（说明不是局部内容加载）。
+          if (node.matches('.state-loading, .boot-loading')) {
+            if (node.parentElement === document.getElementById('app')) state.bootLoadingAdded += 1;
+            else if (!node.closest('.page-content')) state.bootLoadingAdded += 1;
+          }
         }
         if (isEl(record.target) && record.target.classList.contains('page-content')) {
           state.contentReplacements += 1;

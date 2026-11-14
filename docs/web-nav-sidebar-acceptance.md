@@ -145,13 +145,13 @@ layout.openDrawer();                             // 移动端抽屉（自动带 
 node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/baseline-nav-check.json
 ```
 
-结果：**desktop 1 pass / 13 fail，mobile 3 pass / 11 fail → 24 条失败**，逐条对应上文 P1–P3。
+结果：**desktop 2 pass / 13 fail，mobile 2 pass / 11 fail → 24 条失败**（两端各通过的 2 条是 A1、C4），逐条对应上文 P1–P3。
 原始 JSON：`docs/evidence/baseline-nav-check.json`；失败项与问题的映射见 `docs/evidence/README.md`。
 
-### 7.2 修复后（最终构建 `index-CTV82R9k.js`）
+### 7.2 修复后（最终构建 `index-pVuRVRx_.js`）
 
 ```bash
-pnpm build                                            # dist/assets/index-CTV82R9k.js
+pnpm build                                            # dist/assets/index-pVuRVRx_.js
 node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/after-nav-check.json
 ```
 
@@ -163,8 +163,8 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/afte
 
 两端交替覆盖后 A1–A6、B1–B8、C4、C5 全部有机器断言。关键数值（摘自报告）：
 
-- A1 `performance.getEntriesByType('navigation').length === 1`，`timeOrigin` 全程不变
-- A2 `.app-shell` / `.topbar` / `aside.sidebar` 引用恒等，`被移除=[]`，`.boot-loading` 从未出现
+- A1 `performance.getEntriesByType('navigation').length === 1`，`timeOrigin` 全程不变，且 `__kbBootAt`（应用在 `mount()` 前写入的**数字**）前后严格相等：`1794674180883 → 1794674180883`
+- A2 `.app-shell` / `.topbar` / `aside.sidebar` 引用恒等，`被移除=[]`，整页 spinner 出现 **0** 次（判据：`.state-loading` 出现在 `#app` 直接子级或 `.page-content` 之外）
 - A3 搜索框值「压感」跨 4 次导航保留，`activeElement` 从不是搜索框
 - A4 导航中 `.page-content` 空内容采样 = 0，`aria-busy` true/false 严格成对（9/9）
 - A5 push=0；back 恢复 400（记录 400）；forward 恢复 300（记录 300）；深链锚点 `rect.top=80`
@@ -187,7 +187,7 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/afte
 | `pnpm --dir web typecheck` | 通过（`web/tests/**` 也在 include 内，测试本身受类型检查） |
 | `pnpm test` | 6 文件 / **64 用例** 全绿（后端，未改动） |
 | `pnpm --dir web test` | 5 文件 / **101 用例** 全绿 |
-| `pnpm build` | 成功，`dist/index-CTV82R9k.js` |
+| `pnpm build` | 成功，`dist/index-pVuRVRx_.js` |
 
 前端 101 个用例分布：
 
@@ -199,7 +199,7 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/afte
 | `web/tests/sidebar.test.ts` | 12 | **保存→invalidateTree→侧边栏刷新整链**、事件自激环回归、刷新失败提示、合并行契约、`aria-controls` 指向、增量高亮不重建 DOM |
 | `web/tests/tree-model.test.ts` | 14 | 同名合并、`countDocs` 不重复计数、`ancestorsOf`、`mergeOpenPaths`、合并行 DOM 契约 |
 
-**产物体积（C2）**：基线 `index` 未压缩 **200,611 B**；最终 `index-CTV82R9k.js` = **212,790 B 未压缩 / 81,700 B gzip**。
+**产物体积（C2）**：基线 `index` 未压缩 **200,611 B**；最终 `index-pVuRVRx_.js` = **212,823 B 未压缩 / 81,722 B gzip**。
 未压缩 +6.1%、gzip 侧 +0.5 kB 量级，**远低于 +15% 上限**。CSS 31.8 → 32.2 kB（gzip 6.94 → 7.01 kB）。
 
 ### 7.4 三轮对抗性审查（C7）
@@ -231,6 +231,26 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/afte
 | 13 | P3 | `web/index.html` 缺 favicon 导致每次访问多一个 `/favicon.ico` 404 | 内联 SVG data-URI（无额外请求） |
 | 14 | P3 | `createSidebar` 没有清理接口，测试里多实例会串扰 | `SidebarHandle.destroy?()` 解绑全局监听 |
 
+**收尾自查：砍掉两条「恒真断言」（假绿）**
+
+三轮审查都独立点到同一处：E2E 报告全绿，但其中两条断言在实现上不可能失败，所以「全绿」对 A1/A2 没有证明力。收到裁定后重做了这两条，并在最终构建上重跑全量：
+
+| 断言 | 假绿写法 | 为什么恒真 | 现在的判据（最终构建实测） |
+| --- | --- | --- | --- |
+| A1 | `ctx.boot.bootAt === null \|\| finalMeasure.bootAt === ctx.boot.bootAt` | `__kbBootAt` 这个窗口变量在应用代码里**根本没人写入**，两边永远是 `null`，`null === null` 恒真 | `main.ts` 在 `mount()` **之前**写入 `window.__kbBootAt = Date.now()`；断言要求两侧都是 `number` 且严格相等。实测 `1794674180883 → 1794674180883`（桌面）、`1794674202126 → 1794674202126`（移动） |
+| A2 | 计数 `.boot-loading` 的出现次数 | 应用代码里**从来不存在** `.boot-loading` 这个类名（首屏用的是 `.state-loading`），所以计数恒为 0 | `collector.js` 改为对 `.state-loading`/`.boot-loading` 判「是否整页加载」：作为 `#app` 直接子级、或出现在 `.page-content` 之外才计数；`measure()` 里 `bootLoading` 同时检查 `#app > .state-loading` 与 `.app-shell` 缺失。实测两端 `bootSpinner=0` |
+
+加固后重跑：desktop 15 pass / 0 fail / 1 skip、mobile 13 pass / 0 fail / 3 skip → **28 pass / 0 fail / 4 skip，退出码 0**（`docs/evidence/after-nav-check.json`，构建 `index-pVuRVRx_.js`）。
+
+**变异验证（证明这两条现在会真的红）**：把加固后的脚本对着**旧构建** `index-BMUxdCWx.js`（§7.1 的同一份 dist 快照）跑 desktop 轮：
+
+```powershell
+node web/e2e/serve-dist.mjs --dist .reviews-tmp/ci-final/web/dist --port 8899 --api http://127.0.0.1:8787
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --profile desktop
+```
+
+结果 **1 pass / 14 fail / 1 skip，退出码 1**：唯一的 pass 是 C4，**A1 由旧脚本下的 pass 翻成 fail**（`__kbBootAt=null→null`，探针缺失即判红），A2 也因真实整页 spinner 判红。即“全绿”不再可能靠恒真式伪造。
+
 **书面裁定不修（记录在案）**
 
 | 问题 | 为什么不修 |
@@ -245,6 +265,10 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/afte
 
 ### 7.5 PR
 
-分支：`fix/web-spa-nav-sidebar`（基于 `master`）
-PR 链接见下方（`gh pr create` 输出）。
+分支：`fix/web-spa-nav-sidebar`（基于 `main`），PR：<https://github.com/Enter-tainer/agent-knowledge/pull/2>
+
+- CI `test`（GitHub Actions：typecheck + 单测 + build）**通过**。
+- `Workers Builds: agent-knowledge` 显示 **fail**，但 `started_at == completed_at`（0 秒，实际没有执行构建）。已在 `main` 的历史提交上复核同一现象（`e4719be`/`52abb90`/`cea604d`/`fe7cf99` 都是 0 秒失败，只有专门修 CI 的 `8308b80` 是 success），并用「干净 clone 本分支 + `pnpm install --frozen-lockfile` + `pnpm build`」和 `wrangler deploy --dry-run`（130.04 KiB / gzip 33.88 KiB）在本地复现成功，结论是既有基础设施问题，非本 PR 引入。
+
+验收口径以本文 §4 为准；`docs/evidence/` 下的两份 JSON 是 §4 里 A/B 类的机器证据，可用 §7.1/§7.2 的命令原样复跑。
 

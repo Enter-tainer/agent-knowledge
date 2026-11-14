@@ -65,8 +65,8 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:4173 --verbose
 
 | 条款 | 阶段 | 机器判据（摘要） |
 |---|---|---|
-| A1 | tour | `performance.getEntriesByType('navigation').length === 1` 且 `timeOrigin` 前后不变 |
-| A2 | tour | `.app-shell` / `.topbar` / `aside.sidebar` 引用相等；`MutationObserver` 没记录到被移除；`.boot-loading` 出现 0 次 |
+| A1 | tour | `performance.getEntriesByType('navigation').length === 1`；`timeOrigin` 前后不变；`window.__kbBootAt`（应用在 `mount()` 前写入的**数字**）两侧都是 number 且严格相等——探针缺失/非数字即判红，不允许「null === null」式假绿 |
+| A2 | tour | `.app-shell` / `.topbar` / `aside.sidebar` 引用相等；`MutationObserver` 没记录到被移除；整页 spinner 出现 0 次（判据：`.state-loading`/`.boot-loading` 作为 `#app` 直接子级、或落在 `.page-content` 之外） |
 | A3 | tour | 首页输入「压感」→ 文章页输入框值仍是「压感」且焦点不在 input；搜索页 URL 带 `?q=` 且回填 |
 | A4 | tour | `.page-content` 有子节点、导航中空采样 0 次、`aria-busy` 加载中为 true、完成后清除 |
 | A5 | tour + deep-link | push 后 `scrollY=0`；back 恢复离页位置（±2）；forward 恢复进入位置（±2）；`#hash` 深链锚点 `rect.top ∈ [-8, 120]` |

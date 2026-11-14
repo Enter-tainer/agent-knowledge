@@ -29,8 +29,8 @@ const IS_WIN = process.platform === 'win32';
 
 /** 验收条款（逐条机器断言；title 用于报告）。 */
 const CRITERIA = {
-  A1: '巡览全程 performance navigation 条目=1，__kbBootAt/timeOrigin 不变',
-  A2: 'app-shell/topbar/aside.sidebar 引用不变、从未被移除、无 .boot-loading 整页 spinner',
+  A1: '巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变',
+  A2: 'app-shell/topbar/aside.sidebar 引用不变、从未被移除、无整页 spinner（.state-loading 不越出 .page-content）',
   A3: '顶栏搜索框值跨导航保留、未被抢焦点；搜索页保留 ?q=',
   A4: '.page-content 导航期间从不为空，aria-busy 加载期为 true、完成后清除',
   A5: 'push 进入回顶；后退/前进恢复各自 scrollY；#hash 深链渲染后滚到锚点',
@@ -389,7 +389,8 @@ const MEASURE_SCRIPT = `(() => {
     scrollY: window.scrollY,
     pageHeight: document.documentElement.scrollHeight,
     innerHeight: window.innerHeight,
-    bootLoading: !!q('.boot-loading'),
+    bootLoading: !!q('#app > .state-loading, #app > .boot-loading') || !q('.app-shell'),
+    bootAt: (typeof window.__kbBootAt === 'number' ? window.__kbBootAt : null),
     sidebarError: !!q('.sidebar-error'),
     sidebarErrorRetry: !!q('.sidebar-error button'),
     drawer: !!drawer,
@@ -986,13 +987,26 @@ async function phaseTour(br, ctx) {
 
   /* --- A1 收尾：整轮巡览后 navigation 条目仍为 1 --- */
   const finalMeasure = await measure(br);
+  // 三个判据都必须真实成立：
+  //  - navigation 条目仍是启动时那 1 条（没有整页刷新）；
+  //  - timeOrigin 不变；
+  //  - __kbBootAt 是**数字**且与启动时相同（应用在 mount 前写入）。
+  // 旧版写的是 `ctx.boot.bootAt === null || ...`，只要探针不存在就恒真，属假绿。
+  const bootAtStable =
+    typeof ctx.boot.bootAt === 'number' &&
+    typeof finalMeasure.bootAt === 'number' &&
+    finalMeasure.bootAt === ctx.boot.bootAt;
   report.add(
     'A1',
     finalMeasure.navCount === ctx.boot.navCount &&
       finalMeasure.timeOrigin === ctx.boot.timeOrigin &&
-      (ctx.boot.bootAt === null || finalMeasure.bootAt === ctx.boot.bootAt),
+      bootAtStable,
     `巡览后 navigation 条目=${finalMeasure.navCount}（启动 ${ctx.boot.navCount}）、timeOrigin 不变=${finalMeasure.timeOrigin === ctx.boot.timeOrigin}、__kbBootAt=${js(ctx.boot.bootAt)}→${js(finalMeasure.bootAt)}`,
-    { finalNavCount: finalMeasure.navCount, timeOriginStable: finalMeasure.timeOrigin === ctx.boot.timeOrigin },
+    {
+      finalNavCount: finalMeasure.navCount,
+      timeOriginStable: finalMeasure.timeOrigin === ctx.boot.timeOrigin,
+      bootAtStable,
+    },
   );
 }
 
