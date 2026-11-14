@@ -70,6 +70,20 @@
   word-break: break-word;
 }
 
+/* 「刷新失败、仍在用旧目录」的薄提示条：横向排布，不占太多高度 */
+.sidebar-error-thin {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+}
+
+.sidebar-error-thin .sidebar-error-text {
+  font-size: 12px;
+}
+
 /* 抽屉里的树与侧边栏共用 tree-* 样式；只去掉侧边栏专用内边距 */
 .drawer-tree .tree-list {
   padding-bottom: 8px;
@@ -132,6 +146,24 @@
 
 .tree-dir-toggle[aria-expanded='true'] .tree-caret {
   transform: rotate(90deg);
+}
+
+/*
+ * 移动端：合并行「展开/收起」箭头的可点击区域必须 ≥44px（与 app.css 里
+ * 「触控目标统一 ≥44px」的既有约定一致）。视觉上的箭头仍然很小，
+ * 放大的是按钮本身；不放大时只有 20×20，手指基本点不中。
+ */
+@media (max-width: 860px) {
+  .tree-dir-toggle {
+    width: 44px;
+    height: 44px;
+    /* 44px 按钮比 20px 视觉箭头宽，用负外边距把它按原位置对齐，行高不涨 */
+    margin-right: -12px;
+  }
+
+  .tree-dir-row {
+    padding-right: 2px;
+  }
 }
 
 .tree-doc-inline {

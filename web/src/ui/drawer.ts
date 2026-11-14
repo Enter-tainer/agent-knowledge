@@ -92,11 +92,23 @@ export function openDrawerUi(options: DrawerUiOptions): DrawerController {
     close();
   }
 
+  /**
+   * 浏览器前进/后退（真机安卓的返回手势就是这个）也要关抽屉。
+   *
+   * 不能靠 `kb:navigate`：那个事件只在 `navigate()` 里派发，popstate 走的是另一条路径。
+   * 不关的话，抽屉会盖在已经渲染好的新页面上、当前项还高亮着刚离开的那篇，
+   * 而且 `no-scroll` 还挂着 —— 整页滚不动，用户会以为返回没生效。
+   */
+  function onPopState(): void {
+    close();
+  }
+
   function close(): void {
     if (closed) return;
     closed = true;
     document.removeEventListener('keydown', onKeydown, true);
     window.removeEventListener('kb:navigate', onNavigate);
+    window.removeEventListener('popstate', onPopState);
     document.documentElement.classList.remove('no-scroll');
     overlay.remove();
     if (active === controller) active = null;
@@ -112,6 +124,7 @@ export function openDrawerUi(options: DrawerUiOptions): DrawerController {
     if (event.target === overlay) close();
   });
   window.addEventListener('kb:navigate', onNavigate);
+  window.addEventListener('popstate', onPopState);
   document.addEventListener('keydown', onKeydown, true);
 
   document.documentElement.classList.add('no-scroll');

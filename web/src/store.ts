@@ -5,15 +5,31 @@ import type { TreeEntry } from './api/types';
 let cache: TreeEntry[] | null = null;
 let inflight: Promise<TreeEntry[]> | null = null;
 
-export function invalidateTree(): void {
+/**
+ * 只清缓存，**不**广播事件（内部用）。
+ *
+ * 必须和 `invalidateTree()` 分开：侧边栏收到 `kb:tree-invalidated` 后要
+ * `refresh()` → `loadTree(true)`，如果 `loadTree(true)` 又广播事件，
+ * 就会形成 `invalidated → refresh → loadTree(true) → invalidated → …`
+ * 的自激环。之前它只靠浏览器「事件嵌套深度上限」才停下来
+ * （实测 44 层嵌套、侧边栏被重建 88 次），换引擎/换版本就是 RangeError 风险。
+ */
+function clearTreeCache(): void {
   cache = null;
   inflight = null;
+}
+
+/** 目录数据失效：清缓存 + 通知关心它的视图（侧边栏）刷新。 */
+export function invalidateTree(): void {
+  clearTreeCache();
   // 持久侧边栏靠这个事件刷新目录（保存/改名后），页面自己不需要知道侧边栏存在。
   window.dispatchEvent(new Event('kb:tree-invalidated'));
 }
 
 export async function loadTree(force = false): Promise<TreeEntry[]> {
-  if (force) invalidateTree();
+  // force 只清缓存，不再广播——广播是 invalidateTree() 的职责，
+  // 否则侧边栏响应事件时又会触发自己。
+  if (force) clearTreeCache();
   if (cache) return cache;
   if (!inflight) {
     inflight = api

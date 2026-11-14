@@ -16,8 +16,8 @@ vi.mock('../src/navGuard', () => ({
 
 import { confirmLeave, hasDirtyGuard } from '../src/navGuard';
 import { navigate, parseRoute, currentRouteUrl, docUrl, editUrl, replaceUrl, searchUrl, startRouter } from '../src/router';
-import { readScrollY } from '../src/ui/scroll';
-import { setScrollY } from './helpers/env';
+import { entryKey, readScrollY, resetScrollMemory, saveScrollToCurrentEntry, scrollForState } from '../src/ui/scroll';
+import { getScrollY, setScrollY } from './helpers/env';
 
 const onChange = vi.fn();
 // 整个文件只注册一次路由监听（模拟应用只启动一次路由），用例之间通过 replaceUrl 重置 currentUrl。
@@ -26,6 +26,7 @@ startRouter(onChange);
 const flush = () => new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
 
 function resetRouter(): void {
+  resetScrollMemory();
   history.replaceState(null, '', '/');
   replaceUrl('/');
   setScrollY(0);
@@ -127,6 +128,30 @@ describe('navigate：push / replace', () => {
     expect(location.pathname).toBe('/reports');
   });
 
+  it('目标是当前页面时不做任何事：不 push 历史、不广播、滚动位置不动', async () => {
+    // 回归：在侧边栏点「当前高亮那篇」曾会多压一条历史并跳回顶部
+    const lengthBefore = history.length;
+    setScrollY(800);
+    await expect(navigate('/')).resolves.toBe(false);
+    expect(history.length).toBe(lengthBefore);
+    expect(getScrollY()).toBe(800);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(location.pathname).toBe('/');
+  });
+
+  it('忽略 hash 与尾部斜杠差异，视为同一页', async () => {
+    const lengthBefore = history.length;
+    await expect(navigate('/#sec')).resolves.toBe(false);
+    await expect(navigate('//')).resolves.toBe(false);
+    expect(history.length).toBe(lengthBefore);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('同一路径但 query 不同仍算不同页面（搜索词变化要重新渲染）', async () => {
+    const lengthBefore = history.length;
+    await expect(navigate('/search?q=%E5%8E%8B%E6%84%9F')).resolves.toBe(true);
+    expect(history.length).toBe(lengthBefore + 1);
+  });
   it('replace 不改历史长度，新页面从顶部开始', async () => {
     const lengthBefore = history.length;
     await expect(navigate('/search?q=%E5%8E%8B%E6%84%9F', { replace: true })).resolves.toBe(true);
@@ -175,7 +200,11 @@ describe('popstate 语义', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(onChange).toHaveBeenCalledWith({ kind: 'pop', scrollY: 400 });
     expect(currentRouteUrl()).toBe('/reports');
-    expect(readScrollY(history.state)).toBeNull(); // 事件 state 只用于读取，不改写当前 state
+    // popstate 会 adoptEntryKey：事件 state 没有 kbKey 时新建一个并写回（kbScrollY 兜底为 0）
+    expect(entryKey(history.state)).toBeTruthy();
+    expect(readScrollY(history.state)).toBe(0);
+    // 但「交给 layout 恢复」的值来自事件 state（这里没有内存记账，退化为 state.kbScrollY）
+    expect(scrollForState({ kbKey: entryKey(history.state), kbScrollY: 0 })).toBe(0);
   });
 
   it('历史 state 缺失 scrollY 时仍触发渲染（scrollY=null）', () => {
@@ -183,6 +212,25 @@ describe('popstate 语义', () => {
     onChange.mockClear();
     window.dispatchEvent(new PopStateEvent('popstate', { state: null }));
     expect(onChange).toHaveBeenCalledWith({ kind: 'pop', scrollY: null });
+  });
+
+  it('内存记账后 popstate 恢复真实滚动位置（A5 的数据来源）', async () => {
+    // 真实流程：首页滚到 1200 → push 到 /reports（离开时记账）→ 浏览器 back 回首页
+    setScrollY(1200);
+    saveScrollToCurrentEntry();
+    const homeKey = entryKey(history.state);
+    expect(homeKey).toBeTruthy();
+
+    await navigate('/reports');
+    expect(location.pathname).toBe('/reports');
+    onChange.mockClear();
+
+    // 浏览器 back：地址栏回到首页条目，popstate 带回该条目的 state
+    history.replaceState({ kbKey: homeKey, kbScrollY: 0 }, '', '/');
+    window.dispatchEvent(new PopStateEvent('popstate', { state: { kbKey: homeKey, kbScrollY: 0 } }));
+
+    expect(onChange).toHaveBeenCalledWith({ kind: 'pop', scrollY: 1200 });
+    expect(scrollForState({ kbKey: homeKey, kbScrollY: 0 })).toBe(1200);
   });
 
   it('仅 #hash 变化的 popstate 不重渲染（交给浏览器做 fragment 滚动）', () => {
@@ -241,25 +289,78 @@ describe('点击接管', () => {
       '<a id="ext" href="https://example.com/x">外链</a><a id="dl" href="/api/export" download>导出</a>';
     const ext = document.getElementById('ext') as HTMLAnchorElement;
     const dl = document.getElementById('dl') as HTMLAnchorElement;
-    const extEvent = new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
-    ext.dispatchEvent(extEvent);
-    dl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
 
-    // 两条都不应触发 SPA 导航（外链交给浏览器，download 交给浏览器下载）
+    // 观察 router 是否 preventDefault：外链/下载应「放行」，交给浏览器。
+    // 注册在 router 的 document 监听之后，读到它的决定后再 preventDefault，
+    // 避免 jsdom 真的去导航（jsdom 只打印 "Not implemented"，但会污染输出）。
+    const decisions: boolean[] = [];
+    const observe = (event: Event): void => {
+      decisions.push(event.defaultPrevented);
+      event.preventDefault();
+    };
+    document.addEventListener('click', observe);
+    try {
+      ext.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+      dl.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    } finally {
+      document.removeEventListener('click', observe);
+    }
+
+    expect(decisions).toEqual([false, false]); // 两条都不被 router 接管
     expect(onChange).not.toHaveBeenCalled();
     expect(location.pathname).toBe('/');
+  });
+
+  it('同源站内链接会被 preventDefault（避免真整页跳转）', () => {
+    document.body.innerHTML = '<a id="lnk" href="/reports">报告</a>';
+    const anchor = document.getElementById('lnk') as HTMLAnchorElement;
+    let prevented = false;
+    const observe = (event: Event): void => {
+      prevented = event.defaultPrevented;
+      event.preventDefault();
+    };
+    document.addEventListener('click', observe);
+    try {
+      anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    } finally {
+      document.removeEventListener('click', observe);
+    }
+    expect(prevented).toBe(true);
   });
 
   it('带修饰键（Ctrl/Cmd）的点击不被接管', () => {
     document.body.innerHTML = '<a id="lnk" href="/reports">报告</a>';
     const anchor = document.getElementById('lnk') as HTMLAnchorElement;
-    anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }));
+    let prevented = true;
+    const observe = (event: Event): void => {
+      prevented = event.defaultPrevented;
+      event.preventDefault(); // 浏览器会开新标签页；jsdom 不支持，这里挡掉避免无谓噪音
+    };
+    document.addEventListener('click', observe);
+    try {
+      anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ctrlKey: true }));
+    } finally {
+      document.removeEventListener('click', observe);
+    }
+    expect(prevented).toBe(false);
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it('站内 #hash 链接不被接管', () => {
+  it('站内 #hash 链接不被接管（交给浏览器做 fragment 滚动）', () => {
     document.body.innerHTML = '<a id="frag" href="#sec">锚点</a>';
-    (document.getElementById('frag') as HTMLAnchorElement).click();
+    const anchor = document.getElementById('frag') as HTMLAnchorElement;
+    let prevented = true;
+    const observe = (event: Event): void => {
+      prevented = event.defaultPrevented;
+      event.preventDefault();
+    };
+    document.addEventListener('click', observe);
+    try {
+      anchor.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    } finally {
+      document.removeEventListener('click', observe);
+    }
+    expect(prevented).toBe(false);
     expect(onChange).not.toHaveBeenCalled();
   });
 });

@@ -67,7 +67,8 @@ function staleNotice(stale: number): HTMLElement {
       try {
         const result = await api.reindex();
         toast(result.stale === 0 ? '搜索索引已重建完成' : `索引仍落后 ${result.stale} 篇，请稍后再试`, result.stale === 0 ? 'success' : 'error');
-        await navigate('/', { replace: true });
+        // force：URL 没变但数据变了，必须重渲染（否则 staleNotice 留在屏幕上、按钮卡在「重建中…」）
+        await navigate('/', { replace: true, force: true });
       } catch (err) {
         toast(`重建失败：${humanizeError(err)}`, 'error');
         button.disabled = false;

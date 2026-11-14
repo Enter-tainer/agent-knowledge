@@ -11,7 +11,7 @@
 import { humanizeError } from '../api/errors';
 import { loadTree } from '../store';
 import { el } from './dom';
-import { openDrawerUi } from './drawer';
+import { closeDrawer, openDrawerUi } from './drawer';
 import type { SidebarHandle } from './view';
 import { renderTree } from './tree';
 import {
@@ -71,6 +71,24 @@ export function createSidebar(): SidebarHandle {
           if (open) openPaths.add(path);
           else openPaths.delete(path);
         },
+      }),
+    );
+    // 已有旧树时刷新失败：树留着（比清空好），但**必须**告诉用户「这份目录是旧的」，
+    // 否则保存完的新笔记不出现，看起来像保存没生效，且没有重试入口。
+    if (error) body.prepend(staleErrorBar());
+  }
+
+  /** 「刷新失败但保留了旧树」的提示条（薄，不替代树）。 */
+  function staleErrorBar(): HTMLElement {
+    return el(
+      'div',
+      { class: 'sidebar-error sidebar-error-thin', role: 'status' },
+      el('span', { class: 'sidebar-error-text', text: '目录可能不是最新的' }),
+      el('button', {
+        type: 'button',
+        class: 'btn btn-ghost btn-small',
+        text: '重试',
+        onclick: () => void load({ force: true }),
       }),
     );
   }
@@ -249,9 +267,10 @@ export function createSidebar(): SidebarHandle {
   }
 
   // 目录数据失效（保存/改名后）自动刷新，但保留展开状态与滚动位置。
-  window.addEventListener('kb:tree-invalidated', () => {
+  const onTreeInvalidated = (): void => {
     void refresh();
-  });
+  };
+  window.addEventListener('kb:tree-invalidated', onTreeInvalidated);
 
   void load();
 
@@ -260,5 +279,10 @@ export function createSidebar(): SidebarHandle {
     setCurrent: (path?: string) => setCurrent(path),
     refresh,
     openDrawer,
+    /** 解绑全局监听（应用里只有一个实例，主要是给测试用）。 */
+    destroy: () => {
+      window.removeEventListener('kb:tree-invalidated', onTreeInvalidated);
+      closeDrawer();
+    },
   };
 }

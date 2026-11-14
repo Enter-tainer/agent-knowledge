@@ -73,7 +73,9 @@ class Layout {
         onsubmit: (event: Event) => {
           event.preventDefault();
           const q = this.searchInput?.value.trim() ?? '';
-          if (q) void navigate(searchUrl(q));
+          // force：用同一个词再按一次「搜索」应该重新搜（结果页刷新 / 错误态重试），
+          // 不能因为 URL 没变就什么都不做。replace 保证不堆历史条目。
+          if (q) void navigate(searchUrl(q), { replace: true, force: true });
         },
       },
       this.searchInput,

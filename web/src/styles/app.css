@@ -322,13 +322,27 @@ textarea {
   background: var(--bg-soft);
 }
 
+/*
+ * 目录展开箭头。元素本身是空 `<span aria-hidden="true">`（装饰性），
+ * 字形由 ::before 提供 —— 之前只给了宽度和 transform、没有 content，
+ * 结果是一个 0×12 的空白条：用户看不到「这里能展开」，只能瞎点。
+ */
 .tree-caret {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 12px;
   color: var(--text-muted);
   font-size: 10px;
+  line-height: 1;
   transform: rotate(90deg);
   transition: transform 0.12s ease;
+}
+
+.tree-caret::before {
+  content: '▸';
+  font-size: 11px;
+  line-height: 1;
 }
 
 details:not([open]) > .tree-dir-label > .tree-caret {

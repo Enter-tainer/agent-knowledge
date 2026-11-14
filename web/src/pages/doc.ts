@@ -2,7 +2,7 @@ import { api } from '../api';
 import { NotFoundError, humanizeError } from '../api/errors';
 import type { BacklinksResponse, Doc, LinkRef, LinksResponse } from '../api/types';
 import { renderMarkdown } from '../markdown';
-import { docUrl, editUrl, navigate, replaceUrl } from '../router';
+import { currentRouteUrl, docUrl, editUrl, navigate, replaceUrl } from '../router';
 import { loadTree } from '../store';
 import { el, formatDate, parentPath, shortHash } from '../ui/dom';
 import { openNewNoteDialog } from '../ui/newNote';
@@ -18,6 +18,9 @@ import { loadDoc } from './data';
  * 两个面板互不影响，失败时只重拉本面板，不整页 re-render。
  */
 export async function renderDoc(inputPath: string): Promise<PageView> {
+  // 记住「我开始渲染时地址栏是哪一页」：下面 await 之后如果用户已经导航走了，
+  // 就不能再改地址栏（否则会把新页面的历史条目改成旧文档 URL）。
+  const startedAtUrl = currentRouteUrl();
   let doc: Doc;
   try {
     doc = await loadDoc(inputPath);
@@ -37,7 +40,7 @@ export async function renderDoc(inputPath: string): Promise<PageView> {
   }
 
   // wikilink 用的是短名时，把地址栏换成真实路径
-  if (doc.path !== inputPath) replaceUrl(docUrl(doc.path));
+  if (doc.path !== inputPath) replaceUrl(docUrl(doc.path), startedAtUrl);
 
   const article = el('article', { class: 'markdown-body', html: renderMarkdown(doc.raw) });
   stripDuplicateTitle(article, doc.title);
@@ -262,7 +265,13 @@ function enhanceHeadingAnchors(article: HTMLElement): void {
     anchor.addEventListener('click', (event) => {
       event.preventDefault();
       const url = `${location.origin}${location.pathname}#${encodeURIComponent(id)}`;
-      history.replaceState(null, '', `#${id}`);
+      // 保留 history.state：滚动恢复靠 state 里的 kbKey 记账，写成 null 会让该条目
+      // 之后后退时找不到自己的滚动位置（落回顶部）。
+      try {
+        history.replaceState({ ...(history.state ?? {}) }, '', `#${id}`);
+      } catch {
+        /* 某些环境不允许，忽略：至少滚动和复制仍然有效 */
+      }
       void navigator.clipboard?.writeText(url).then(
         () => {
           anchor.classList.add('is-copied');

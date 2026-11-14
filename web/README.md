@@ -12,7 +12,7 @@ pnpm dev          # 默认 mock 模式（不依赖后端），http://127.0.0.1:5
 pnpm build        # tsc --noEmit && vite build → dist/index.html + dist/assets/*
 pnpm preview      # 本地预览构建产物（/api 仍需要真后端）
 pnpm typecheck    # 只查类型
-pnpm test         # jsdom 单测（router / 滚动恢复 / 持久布局 / 目录树合并）
+pnpm test         # jsdom 单测（router / 滚动恢复 / 持久布局 / 侧边栏刷新链 / 目录树合并）
 ```
 
 `pnpm dev` 默认用 `src/mock/notes/*.md` 里的 5 篇假笔记（表格 / callout / 双链 / 断链 / 无入链都有），
@@ -144,7 +144,7 @@ web/
 │   ├── styles/sidebar.css  # 侧边栏/合并行/骨架屏补丁
 │   └── mock/notes/*.md     # 5 篇 mock 笔记（只在 mock 模式加载）
 ├── e2e/                    # agent-browser 端到端验收脚本（nav-check.mjs）
-├── tests/                  # jsdom 单测（router/scroll/layout/tree-model）
+├── tests/                  # jsdom 单测（router/scroll/layout/sidebar/tree-model）
 └── dist/                   # 构建产物（git 忽略）
 ```
 

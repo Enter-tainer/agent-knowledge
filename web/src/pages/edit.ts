@@ -8,7 +8,7 @@ import {
 import type { Doc, UpdateResult } from '../api/types';
 import { renderMarkdown } from '../markdown';
 import { clearLeaveGuard, setLeaveGuard, type LeaveGuard } from '../navGuard';
-import { docUrl, editUrl, navigate, replaceUrl } from '../router';
+import { currentRouteUrl, docUrl, editUrl, navigate, replaceUrl } from '../router';
 import { invalidateTree } from '../store';
 import { el, shortHash } from '../ui/dom';
 import { layout } from '../ui/layout';
@@ -24,6 +24,8 @@ import { loadDoc } from './data';
  * 有未保存改动时，所有站内跳转（返回阅读/取消/浏览器 back/顶栏链接）都会先弹确认。
  */
 export async function renderEdit(inputPath: string, isNew = false): Promise<PageView> {
+  // 与 renderDoc 同理：await 之后如果用户已经导航走，就不许再改地址栏
+  const startedAtUrl = currentRouteUrl();
   let doc: Doc | null = null;
   if (!isNew) {
     try {
@@ -45,7 +47,7 @@ export async function renderEdit(inputPath: string, isNew = false): Promise<Page
         showSidebar: false,
       };
     }
-    if (doc.path !== inputPath) replaceUrl(editUrl(doc.path));
+    if (doc.path !== inputPath) replaceUrl(editUrl(doc.path), startedAtUrl);
   }
 
   const path = doc?.path ?? inputPath;

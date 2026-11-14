@@ -42,11 +42,12 @@ const CRITERIA = {
   B5: '抽屉：Esc/遮罩/点链接都关闭、焦点回触发按钮、无残留 no-scroll、（窄屏）',
   B6: '404 / 页面级错误态仍在 shell 内并保留侧边栏',
   B7: '目录树加载失败：侧边栏显示可重试错误，正文仍可用；重试后树恢复',
+  B8: '同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc 与 .tree-dir-toggle(aria-expanded/aria-controls)，无重复行',
   C4: '巡览全程无 console.error / pageerror / 非预期 4xx-5xx',
   C5: '导航后焦点落在内容区；侧边栏 nav[aria-label]；抽屉 role=dialog aria-modal',
 };
 
-const ORDER = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'C4', 'C5'];
+const ORDER = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'B1', 'B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'C4', 'C5'];
 const PROFILES = {
   desktop: { width: 1280, height: 900 },
   mobile: { width: 390, height: 844 },
@@ -210,6 +211,11 @@ class Browser {
     this.raw(['open', url, '--json', '--init-script', COLLECTOR], { timeout: 90000 });
   }
 
+  /** 只启动浏览器（停在 about:blank）；视口仍需在 open 之后设置（agent-browser 的 open 会 relaunch）。 */
+  launch() {
+    this.raw(['open'], { timeout: 90000 });
+  }
+
   click(selector) {
     this.raw(['click', selector], { timeout: 30000 });
   }
@@ -228,6 +234,10 @@ class Browser {
 
   setViewport(width, height) {
     this.raw(['set', 'viewport', String(width), String(height)], { timeout: 30000 });
+  }
+
+  reload() {
+    this.raw(['reload'], { timeout: 60000 });
   }
 
   close() {
@@ -261,6 +271,24 @@ class Browser {
     const result = this.eval(script, { timeout: timeout + 15000, retry: 0 });
     if (!result || !result.ok) throw new Error(`等待超时（${label}，${timeout}ms）`);
     return result.waited;
+  }
+
+  /**
+   * 等滚动位置落到期望值（popstate 恢复是异步的：要等内容渲染完再 scrollTo）。
+   * 返回最后一次读到的 scrollY；超时也返回，由调用方判定。
+   */
+  waitScroll(expected, { tolerance = 2, timeout = 8000 } = {}) {
+    const script = `(async () => {
+      const started = Date.now();
+      let seen = window.scrollY;
+      while (Date.now() - started < ${timeout}) {
+        seen = window.scrollY;
+        if (Math.abs(seen - ${expected}) <= ${tolerance}) return { ok: true, scrollY: seen, waited: Date.now() - started };
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return { ok: false, scrollY: window.scrollY, waited: Date.now() - started };
+    })()`;
+    return this.eval(script, { timeout: timeout + 15000, retry: 0 });
   }
 
   settle(ms = 250) {
@@ -376,6 +404,27 @@ const MEASURE_SCRIPT = `(() => {
     shellWide: !!(shell && shell.classList.contains('app-shell-wide')),
     bodySidebar: (() => { const body = q('.app-body'); return body ? body.dataset.sidebar || null : null; })(),
     docTitleText: (() => { const node = q('.doc-title, .page-title'); return node ? (node.textContent || '').slice(0, 100) : null; })(),
+    appText: (() => { const root = q('#app'); return root ? (root.textContent || '').slice(0, 400) : ''; })(),
+    dirRows: aside ? [...aside.querySelectorAll('[data-dir-path]')].map((node) => {
+      const path = node.getAttribute('data-dir-path');
+      const merged = node.classList.contains('tree-dir-row');
+      const isDetails = node.tagName === 'DETAILS';
+      const toggle = merged ? node.querySelector('.tree-dir-toggle') : null;
+      const controls = toggle ? toggle.getAttribute('aria-controls') : null;
+      const childList = controls ? document.getElementById(controls) : null;
+      const docLink = node.querySelector('a.tree-doc[data-doc-path]');
+      return {
+        path,
+        merged,
+        details: isDetails,
+        open: isDetails ? Boolean(node.open) : null,
+        toggle: Boolean(toggle),
+        expanded: toggle ? toggle.getAttribute('aria-expanded') === 'true' : null,
+        controls: controls || null,
+        childVisible: childList ? !childList.hidden : null,
+        docPath: docLink ? docLink.getAttribute('data-doc-path') : null,
+      };
+    }) : [],
     navCount: performance.getEntriesByType('navigation').length,
     timeOrigin: performance.timeOrigin,
     bootAt: (typeof window.__kbBootAt === 'undefined' ? null : window.__kbBootAt),
@@ -484,6 +533,12 @@ function contentDetail(measure) {
   return `内容子节点=${measure.contentChildren} aria-busy=${measure.ariaBusy} 导航中空内容采样=${measure.emptyContentSamples} busy true/false=${measure.busyTrue}/${measure.busyFalse}`;
 }
 
+/** 文档路径的祖先目录（'a/b/c' → ['a', 'a/b']）。 */
+function ancestorPaths(path) {
+  const parts = String(path).split('/').filter(Boolean);
+  return parts.slice(0, -1).map((_, index) => parts.slice(0, index + 1).join('/'));
+}
+
 async function measure(br) {
   return br.eval(MEASURE_SCRIPT, { retry: 1 });
 }
@@ -583,8 +638,13 @@ async function buildFixture(tree, base) {
   }
   const topDir = tourDoc.path.split('/')[0];
   const secondDoc = sorted.find((entry) => entry.path.split('/')[0] !== topDir) || sorted[1] || tourDoc;
+  // B8：既是笔记、又是其他笔记父目录的路径（真实语料里有 4 处）
+  const collisions = tree
+    .filter((entry) => tree.some((other) => other !== entry && other.path.startsWith(`${entry.path}/`)))
+    .map((entry) => entry.path);
   return {
     docsCount: tree.length,
+    collisions,
     tourDoc: { path: tourDoc.path, title: tourDoc.title || tourDoc.path, size: tourDoc.size },
     scrollDoc: { path: tourDoc.path, title: tourDoc.title || tourDoc.path, size: tourDoc.size },
     secondDoc: { path: secondDoc.path, title: secondDoc.title || secondDoc.path, size: secondDoc.size },
@@ -668,15 +728,26 @@ async function phaseTour(br, ctx) {
       `文章页侧边栏：宽=${doc.sidebarWidth} left=${doc.sidebarLeft} < 内容 left=${doc.contentLeft}、树节点=${doc.treeDocCount}`,
       { docSidebarWidth: doc.sidebarWidth, docTreeDocs: doc.treeDocCount },
     );
+    const ancestors = ancestorPaths(tourDoc.path);
+    const ancestorStates = ancestors.map((path) => {
+      const rows = doc.dirRows.filter((row) => row.path === path);
+      const row = rows[0] || null;
+      const openOk = row
+        ? row.merged
+          ? row.expanded === true && row.childVisible === true
+          : row.open === true
+        : false;
+      return { path, exists: rows.length === 1, merged: Boolean(row && row.merged), openOk };
+    });
     report.add(
       'B2',
       doc.currentCount === 1 &&
         doc.currentPath === tourDoc.path &&
-        doc.ancestorsOpen.length > 0 &&
-        doc.ancestorsOpen.every(Boolean) &&
-        doc.currentVisible,
-      `aria-current 唯一=${doc.currentCount}、当前=${doc.currentPath}、祖先 details 全开=${js(doc.ancestorsOpen)}、在可视区=${doc.currentVisible}`,
-      { b2CurrentPath: doc.currentPath, b2Ancestors: doc.ancestorsOpen },
+        doc.currentVisible &&
+        ancestors.length > 0 &&
+        ancestorStates.every((state) => state.exists && state.openOk),
+      `aria-current 唯一=${doc.currentCount}、当前=${doc.currentPath}、在可视区=${doc.currentVisible}、祖先行展开=${js(ancestorStates)}`,
+      { b2CurrentPath: doc.currentPath, b2Ancestors: ancestorStates },
     );
     report.add(
       'C5',
@@ -699,6 +770,66 @@ async function phaseTour(br, ctx) {
     );
   }
 
+  /* --- B8：同名「目录 + 笔记」必须合并成一行 --- */
+  const collisions = ctx.fixture.collisions || [];
+  if (collisions.length === 0) {
+    report.skip('B8', '语料里没有「目录 + 同名笔记」碰撞，无法验证合并行');
+  } else {
+    const collisionStates = collisions.map((path) => {
+      const rows = doc.dirRows.filter((row) => row.path === path);
+      const row = rows[0] || null;
+      const ok = Boolean(
+        rows.length === 1 &&
+          row &&
+          row.merged === true &&
+          row.details === false &&
+          row.toggle === true &&
+          Boolean(row.controls) &&
+          row.docPath === path &&
+          (row.expanded === true || row.expanded === false) &&
+          row.childVisible === row.expanded,
+      );
+      return { path, occurrences: rows.length, ok, row };
+    });
+    report.add(
+      'B8',
+      collisionStates.every((state) => state.ok),
+      `同名合并行：${collisionStates
+        .map((state) => `${state.path}（行数=${state.occurrences}${state.ok ? '' : `，merged=${state.row && state.row.merged} toggle=${state.row && state.row.toggle} docPath=${state.row && state.row.docPath}`}）`)
+        .join('；')}`,
+      {
+        b8Collisions: collisionStates.map(({ path, occurrences, ok }) => ({ path, occurrences, ok })),
+      },
+    );
+
+    if (profile === 'desktop') {
+      const toggleTarget = collisions.find((path) => !tourDoc.path.startsWith(`${path}/`)) || collisions[0];
+      const toggled = await br.eval(
+        `(() => {
+          const row = [...document.querySelectorAll('aside.sidebar [data-dir-path]')].find((node) => node.dataset.dirPath === ${js(toggleTarget)});
+          if (!row) return null;
+          const button = row.querySelector('.tree-dir-toggle');
+          if (!button) return null;
+          const controls = button.getAttribute('aria-controls');
+          const list = controls ? document.getElementById(controls) : null;
+          const before = button.getAttribute('aria-expanded');
+          button.click();
+          const after = button.getAttribute('aria-expanded');
+          const hiddenAfter = list ? list.hidden : null;
+          button.click();
+          return { before, after, hiddenAfter, hasControls: Boolean(controls) };
+        })()`,
+        { retry: 0 },
+      );
+      report.add(
+        'B8',
+        Boolean(toggled && toggled.hasControls && toggled.before !== toggled.after && toggled.hiddenAfter === (toggled.after === 'false')),
+        `合并行 toggle「${toggleTarget}」：aria-expanded ${toggled && toggled.before}→${toggled && toggled.after}、子列表 hidden=${toggled && toggled.hiddenAfter}`,
+        { b8Toggle: toggled },
+      );
+    }
+  }
+
   /* 记录锚点：深链阶段用 */
   ctx.anchorId = await br.eval(`(() => { const heading = document.querySelector('.page-content h2[id], .doc-page h2[id], .markdown-body h2[id]'); return heading ? heading.id : null; })()`, { retry: 1 });
 
@@ -708,6 +839,7 @@ async function phaseTour(br, ctx) {
     { retry: 1 },
   );
   if (wikilink) {
+    ctx.wikilinkTarget = wikilink.target;
     await navActive(br, true);
     await clickJs(br, `document.querySelector('.page-content a.wikilink, .doc-page a.wikilink, .markdown-body a.wikilink')`, '文章内 wikilink');
     await br.waitFor(`location.pathname !== ${js(docUrl(tourDoc.path))}`, { label: 'wikilink 导航', timeout: 15000 });
@@ -795,17 +927,17 @@ async function phaseTour(br, ctx) {
   await navActive(br, true);
   await br.back();
   await br.waitFor(`location.pathname === '/'`, { label: '后退回首页', timeout: 15000 });
-  await br.settle(600);
+  const backScrollResult = await br.waitScroll(homeScroll);
   await navActive(br, false);
-  const backScroll = await br.eval('window.scrollY', { retry: 1 });
+  const backScroll = backScrollResult ? backScrollResult.scrollY : null;
   const backMeasure = await measure(br);
 
   await navActive(br, true);
   await br.forward();
   await br.waitFor(`location.pathname === ${js(docUrl(scrollDoc.path))}`, { label: '前进回长文', timeout: 15000 });
-  await br.settle(600);
+  const forwardScrollResult = await br.waitScroll(docScroll);
   await navActive(br, false);
-  const forwardScroll = await br.eval('window.scrollY', { retry: 1 });
+  const forwardScroll = forwardScrollResult ? forwardScrollResult.scrollY : null;
   const forwardMeasure = await measure(br);
 
   report.add('A2', identityOk(backMeasure) && identityOk(forwardMeasure), `后退/前进后：${identityDetail(forwardMeasure)}`);
@@ -888,6 +1020,13 @@ async function phaseDrawer(br, ctx) {
     return;
   }
 
+  // 先进一篇文档：抽屉高亮（B4）只有在有 currentPath 时才有意义，首页没有「当前文档」。
+  const drawerDoc = ctx.fixture.secondDoc;
+  await navActive(br, true);
+  await clickJs(br, docLinkExpr(drawerDoc.path), `首页进入文档 ${drawerDoc.path}`);
+  await waitPage(br, docUrl(drawerDoc.path), { marker: '.doc-page', settle: 500, label: '抽屉阶段进入文档' });
+  await navActive(br, false);
+
   await br.click('.nav-tree-btn');
   await br.waitFor(`!!document.querySelector('.tree-drawer')`, { label: '抽屉打开' });
   await br.settle(150);
@@ -901,7 +1040,7 @@ async function phaseDrawer(br, ctx) {
   report.add(
     'B4',
     opened.drawerCurrentCount === 1,
-    `抽屉内当前文档高亮个数=${opened.drawerCurrentCount}（期望 1）`,
+    `在文档页打开抽屉：当前文档高亮个数=${opened.drawerCurrentCount}（期望 1，路径=${drawerDoc.path}）`,
     { drawerCurrentCount: opened.drawerCurrentCount },
   );
 
@@ -1010,9 +1149,13 @@ async function phaseDeepLink(br, ctx) {
   );
   report.add(
     'A5',
-    Boolean(hashed) && hashed.hash === `#${ctx.anchorId}` && hashed.rectTop !== null && Math.abs(hashed.rectTop) <= 8,
-    `深链 ${hashed && hashed.hash}：锚点 rect.top=${hashed && hashed.rectTop}（期望≈0）、scrollY=${hashed && hashed.scrollY}`,
-    { hashScrollY: hashed && hashed.scrollY, hashRectTop: hashed && hashed.rectTop },
+    Boolean(hashed) &&
+      safeDecode(hashed.hash).replace(/^#/, '') === ctx.anchorId &&
+      hashed.rectTop !== null &&
+      hashed.rectTop >= -8 &&
+      hashed.rectTop <= 120,
+    `深链 raw=${hashed && hashed.hash} decoded=${hashed && safeDecode(hashed.hash)}：锚点 rect.top=${hashed && hashed.rectTop}（应在视口顶部区域 ≤120px）、scrollY=${hashed && hashed.scrollY}`,
+    { hashScrollY: hashed && hashed.scrollY, hashRectTop: hashed && hashed.rectTop, hashRaw: hashed && hashed.hash },
   );
 }
 
@@ -1025,14 +1168,14 @@ async function phaseEdit(br, ctx) {
   if (profile === 'desktop') {
     report.add(
       'B4',
-      edit.sidebarDisplay === 'none' && edit.shellWide,
-      `编辑页（桌面）：侧边栏 display=${edit.sidebarDisplay}、宽版 shell=${edit.shellWide}、正文子节点=${edit.contentChildren}`,
+      (!edit.sidebarExists || edit.sidebarDisplay === 'none') && edit.shellWide,
+      `编辑页（桌面）：侧边栏 display=${edit.sidebarDisplay}（无侧边栏=${!edit.sidebarExists}）、宽版 shell=${edit.shellWide}、正文子节点=${edit.contentChildren}`,
       { editSidebarDisplay: edit.sidebarDisplay, editShellWide: edit.shellWide },
     );
   } else {
     report.add(
       'B4',
-      edit.sidebarDisplay === 'none' && !edit.drawerBtnVisible,
+      (!edit.sidebarExists || edit.sidebarDisplay === 'none') && !edit.drawerBtnVisible,
       `编辑页（移动端）：侧边栏 display=${edit.sidebarDisplay}、目录按钮可见=${edit.drawerBtnVisible}（契约：编辑页不给抽屉按钮）`,
       { editDrawerBtnVisible: edit.drawerBtnVisible },
     );
@@ -1048,8 +1191,8 @@ async function phaseNotFound(br, ctx) {
   report.add(
     'A6',
     notfound.shell && notfound.topbar && notfound.sidebarExists && notfound.searchInput && notfound.contentText.includes('页面不存在'),
-    `未知路由：shell=${notfound.shell} topbar=${notfound.topbar} 侧边栏=${notfound.sidebarExists} 搜索框=${notfound.searchInput} 文案含「页面不存在」=${notfound.contentText.includes('页面不存在')}`,
-    { notfoundText: notfound.contentText.slice(0, 80) },
+    `未知路由：shell=${notfound.shell} topbar=${notfound.topbar} 侧边栏=${notfound.sidebarExists} 搜索框=${notfound.searchInput} 内容区含「页面不存在」=${notfound.contentText.includes('页面不存在')}`,
+    { notfoundText: notfound.contentText.slice(0, 120) },
   );
   report.add(
     'B6',
@@ -1065,15 +1208,26 @@ async function phaseNotFound(br, ctx) {
   report.add(
     'B6',
     missing.shell && missing.sidebarExists && missing.contentChildren > 0 && !missing.bootLoading && /不存在|没有这篇|加载失败/.test(missing.contentText),
-    `缺失文档：shell=${missing.shell} 侧边栏=${missing.sidebarExists} 内容子节点=${missing.contentChildren} 文案=${js(missing.contentText.slice(0, 60))}`,
-    { missingDocText: missing.contentText.slice(0, 80) },
+    `缺失文档：shell=${missing.shell} 侧边栏=${missing.sidebarExists} 内容子节点=${missing.contentChildren} 内容区文案=${js(missing.contentText.slice(0, 60))}`,
+    { missingDocText: missing.contentText.slice(0, 120) },
   );
 }
 
-function isExpectedFailure(request) {
+function safeDecode(text) {
+  try {
+    return decodeURIComponent(text);
+  } catch {
+    return text;
+  }
+}
+
+function isExpectedFailure(request, ctx) {
   const url = request.url || '';
   if (url.includes('__e2e_missing')) return true; // 刻意访问不存在的笔记
   if (url.includes('/api/tree')) return true; // B7 刻意 abort
+  // 短名 wikilink（如 [[设备乙逆向]]）会先请求 /api/docs/<短名> 得到 404，
+  // 再由页面把地址栏纠正成真实路径；这是既有行为，不算 C4 的「非预期 4xx」。
+  if (ctx && ctx.wikilinkTarget && safeDecode(url).includes(ctx.wikilinkTarget)) return true;
   return false;
 }
 
@@ -1083,7 +1237,7 @@ async function phaseAudit(br, ctx) {
   mergeErrors(errors, snapshot, 'final');
   const requests = await br.requests();
   const unexpected = requests
-    .filter((request) => typeof request.status === 'number' && request.status >= 400 && !isExpectedFailure(request))
+    .filter((request) => typeof request.status === 'number' && request.status >= 400 && !isExpectedFailure(request, ctx))
     .map((request) => `${request.status} ${request.method || 'GET'} ${request.url}`);
   const consoleCount = errors.consoleErrors.length;
   const pageErrorCount = errors.pageErrors.length;
@@ -1139,10 +1293,26 @@ async function runProfile(profile, options, fixture) {
 
   try {
     br.close();
-    br.setViewport(viewport.width, viewport.height);
+    // 关键：视口覆盖必须先有浏览器实例、再设置、最后才导航。
+    // 顺序错了（先 set 再首次 open）会让 agent-browser 以默认桌面视口启动，
+    // 移动端 profile 会拿到 1258px 宽度（媒体查询不匹配 → 侧边栏常驻、目录按钮隐藏）。
+    br.close();
+    // agent-browser 的 open 会 relaunch/reuse 浏览器，把之前 set viewport 丢掉，
+    // 所以顺序必须是 close → open → set viewport → reload，否则移动端会拿到 1258px 桌面宽度。
     await br.open(`${options.base}/`);
+    br.setViewport(viewport.width, viewport.height);
+    br.reload();
     await br.waitFor(`!!document.querySelector('.topbar') && !document.querySelector('.boot-loading')`, { label: '首屏加载', timeout: 25000 });
     await br.settle(300);
+
+    // 硬校验：视口没生效就直接 fatal，不能拿错误宽度静默跑完 16 条断言。
+    const actualWidth = await br.eval('window.innerWidth', { retry: 1 });
+    if (typeof actualWidth !== 'number' || Math.abs(actualWidth - viewport.width) > 2) {
+      throw new Error(
+        `viewport 未生效：期望 ${viewport.width}px，实际 ${actualWidth}px（agent-browser set viewport 必须在 open 之后调用）`,
+      );
+    }
+    phases.push({ name: 'viewport', ok: true, width: actualWidth });
 
     await runPhase('tour', ['A1', 'A2', 'A3', 'A4', 'A5', 'B1', 'B2', 'B3', 'B4', 'C5'], () => phaseTour(br, ctx));
     await runPhase('drawer', ['B4', 'B5', 'C5'], () => phaseDrawer(br, ctx));

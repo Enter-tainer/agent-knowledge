@@ -135,4 +135,116 @@ layout.openDrawer();                             // 移动端抽屉（自动带 
 
 ## 7. 验收记录（实现完成后填写）
 
-_待填：基线失败证据、修复后 A/B/C 逐条结果、性能与产物体积对比、3 轮对抗审查结论、PR 链接。_
+> 全部数据为 2026-11-14 在本机实测，非推测。命令与产物哈希都记在下面，可复现。
+
+### 7.1 基线（修复前，HEAD `20065ad` 之前的构建 `index-BMUxdCWx.js`）
+
+用 `web/e2e/serve-dist.mjs` 把旧 dist 快照托管到 `:8899`、`/api` 反代 `:8787`，跑同一个 E2E 脚本：
+
+```bash
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/baseline-nav-check.json
+```
+
+结果：**desktop 1 pass / 13 fail，mobile 3 pass / 11 fail → 24 条失败**，逐条对应上文 P1–P3。
+原始 JSON：`docs/evidence/baseline-nav-check.json`；失败项与问题的映射见 `docs/evidence/README.md`。
+
+### 7.2 修复后（最终构建 `index-CTV82R9k.js`）
+
+```bash
+pnpm build                                            # dist/assets/index-CTV82R9k.js
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/after-nav-check.json
+```
+
+| profile | 结果 |
+| --- | --- |
+| desktop 1280×900 | **15 pass / 0 fail / 1 skip**（skip = B5 抽屉为移动端专用） |
+| mobile 390×844 | **13 pass / 0 fail / 3 skip**（skip = B1/B2/B3 桌面专用，由桌面轮覆盖） |
+| 合计 | **28 pass / 0 fail / 4 skip，退出码 0** |
+
+两端交替覆盖后 A1–A6、B1–B8、C4、C5 全部有机器断言。关键数值（摘自报告）：
+
+- A1 `performance.getEntriesByType('navigation').length === 1`，`timeOrigin` 全程不变
+- A2 `.app-shell` / `.topbar` / `aside.sidebar` 引用恒等，`被移除=[]`，`.boot-loading` 从未出现
+- A3 搜索框值「压感」跨 4 次导航保留，`activeElement` 从不是搜索框
+- A4 导航中 `.page-content` 空内容采样 = 0，`aria-busy` true/false 严格成对（9/9）
+- A5 push=0；back 恢复 400（记录 400）；forward 恢复 300（记录 300）；深链锚点 `rect.top=80`
+- B1 侧边栏宽 280、`left=74 < 内容 left=382`、树节点 36
+- B2 `aria-current` 唯一、两层合并行祖先全部展开、节点在可视区
+- B3 侧边栏引用不变、`scrollTop` 120→354 不被重置、本次导航 `/api/tree` = 0 次
+- B4 桌面 `/`、`/search`、`/reports` 有侧边栏；`/edit/` 无侧边栏且宽版；移动端侧边栏 `display=none` 且有「☰ 目录」按钮
+- B5 抽屉 `role=dialog aria-modal=true`、36 个节点、焦点陷阱；Esc / 遮罩 / 点链接三条关闭路径都通过，`no-scroll` 无残留，焦点回触发按钮
+- B6 未知路由与缺失文档都留在 shell 内并保留侧边栏
+- B7 树加载失败 → 侧边栏可重试错误、正文可用；重试后恢复 36 篇
+- B8 四处同名冲突各只有 1 行，箭头能折叠子列表
+- C4 `console.error=0`、`pageerror=0`、`unhandledrejection=0`、非预期 4xx/5xx=0
+- C5 导航后焦点落在 `.page-content` 内、抽屉内 Tab×4 焦点不逃逸
+
+### 7.3 单测与门禁（C1 / C2 / D3）
+
+| 命令 | 结果 |
+| --- | --- |
+| `pnpm typecheck` | 通过 |
+| `pnpm --dir web typecheck` | 通过（`web/tests/**` 也在 include 内，测试本身受类型检查） |
+| `pnpm test` | 6 文件 / **64 用例** 全绿（后端，未改动） |
+| `pnpm --dir web test` | 5 文件 / **101 用例** 全绿 |
+| `pnpm build` | 成功，`dist/index-CTV82R9k.js` |
+
+前端 101 个用例分布：
+
+| 文件 | 用例 | 覆盖 |
+| --- | --- | --- |
+| `web/tests/router.test.ts` | 28 | `parseRoute`/URL 构造、navigate push/replace/同页早退、脏守卫取消、popstate 语义、hash-only 不重渲染、链接点击接管 |
+| `web/tests/scroll.test.ts` | 21 | key + 内存记账、跨刷新兜底、push/replace/`replaceEntryKeepScroll`、节流定时器竞态回归、`scrollToTop`/`restoreScroll`/`scrollToHash` |
+| `web/tests/layout.test.ts` | 26 | mount 幂等、只换 `.page-content`、`aria-busy` + 150ms 进度条、title/searchQuery/wide/showSidebar、`showError` 留在 shell、onMount/onTeardown 顺序、滚动三态、焦点管理 |
+| `web/tests/sidebar.test.ts` | 12 | **保存→invalidateTree→侧边栏刷新整链**、事件自激环回归、刷新失败提示、合并行契约、`aria-controls` 指向、增量高亮不重建 DOM |
+| `web/tests/tree-model.test.ts` | 14 | 同名合并、`countDocs` 不重复计数、`ancestorsOf`、`mergeOpenPaths`、合并行 DOM 契约 |
+
+**产物体积（C2）**：基线 `index` 未压缩 **200,611 B**；最终 `index-CTV82R9k.js` = **212,790 B 未压缩 / 81,700 B gzip**。
+未压缩 +6.1%、gzip 侧 +0.5 kB 量级，**远低于 +15% 上限**。CSS 31.8 → 32.2 kB（gzip 6.94 → 7.01 kB）。
+
+### 7.4 三轮对抗性审查（C7）
+
+三轮审查独立进行（不同审查者、不同侧重），共提出 6 个 P0/P1 与若干 P2/P3。
+
+| 轮次 | 侧重 | 结论 |
+| --- | --- | --- |
+| 第 1 轮 | 代码正确性 / 竞态 / 历史栈 | 修完 P1 可以上线；报 3 个 P1 |
+| 第 2 轮 | 产品行为 / 既有功能回归 | 修完 P1 可以上线；报 2 个 P1（含「箭头根本不可见」） |
+| 第 3 轮 | 最终门禁 / 逐条对照准出标准 | **可以上线**，无 P0/P1 |
+
+**已修复（全部有实测复现与回归测试）**
+
+| # | 级别 | 问题 | 修复 |
+| --- | --- | --- | --- |
+| 1 | P1 | **侧边栏箭头完全没有视觉呈现**（空 `<span>`，无 `content`、无边框背景，实测 0×12 全透明）——用户「点右边箭头展开树」这个原始需求实际未交付 | `app.css` 的 `.tree-caret::before { content: '▸' }`，保留旋转；两个方向实测 `matrix(1,0,0,1)` vs `matrix(0,1,-1,0)` |
+| 2 | P1 | **点「当前正在看的这篇」会重复导航**：多压一条历史、跳回顶部（实测 `histLen 2→3`、`y 600→0`） | `navigate()` 增加同页早退（`isSamePage`，忽略 hash 与尾斜杠、保留 query） |
+| 3 | P0 | **`kb:tree-invalidated` 事件自激环**：`loadTree(force)` → `invalidateTree()` → 派发 → sidebar `refresh()` → `loadTree(true)` → …（实测**一次派发引发 43 次嵌套派发**，只靠浏览器事件嵌套上限才停） | `store.ts` 拆出 `clearTreeCache()`（只清缓存）与 `invalidateTree()`（清缓存并广播）；实测降到 1 次 |
+| 4 | P1 | `navigate()` 早退让**首页「重建索引」永久卡在「重建中…」**（成功路径不恢复按钮） | `navigate(..., { force: true })` 跳过同页判断，仍走 replace 不压历史 |
+| 5 | P1 | **过期渲染改写地址栏**：点击后请求未返回就导航走，旧渲染 `replaceUrl()` 会把新条目改成旧文档 URL，导致地址栏与正文错位、之后点那篇「没反应」 | `replaceUrl(to, expectedUrl)` 校验「地址栏仍是我以为的那一页」；`doc.ts`/`edit.ts` 传入起始 URL |
+| 6 | P1 | **侧边栏刷新失败被静默吞掉**：树保持旧状态、无错误无重试，用户以为保存没生效 | `renderBody` 在有旧树时也渲染薄提示条 `.sidebar-error-thin`（「目录可能不是最新的」+ 重试） |
+| 7 | P2 | 滚动 120ms 节流定时器跨条目未取消，旧页面滚动位置可能记到新条目 | `cancelPendingScrollTimer()` 在 `pushEntry`/`replaceEntry`/`adoptEntryKey` 中调用 + 2 个回归用例 |
+| 8 | P2 | 移动端合并行箭头触控区仅 20×20（项目自己在 `app.css` 写明「触控目标统一 ≥44px」） | `@media (max-width:860px)` 下 44×44，视觉箭头不变，`margin-right:-12px` 保持对齐；390/320px 实测不与计数重叠、无横向溢出 |
+| 9 | P2 | **移动端抽屉不随浏览器后退关闭**：内容已换页、抽屉还盖着、`no-scroll` 锁死整页（真机安卓返回手势就是这个路径） | 抽屉额外监听 `popstate` |
+| 10 | P2 | 同词再按「搜索」完全无反应（错误态下也无法重试） | 搜索表单用 `navigate(url, { replace: true, force: true })` |
+| 11 | P2 | 正文里指向**本文某节**的链接点了没反应（点击委托已 `preventDefault`，同页早退把原生 fragment 滚动也吃了） | 同页但 hash 不同时自行 `scrollToHash()`，不重渲染 |
+| 12 | P2 | 标题「复制本节链接」用 `replaceState(null)` 抹掉 `kbKey`，该条目之后后退回顶部 | 改为保留 `history.state` 后再改 hash |
+| 13 | P3 | `web/index.html` 缺 favicon 导致每次访问多一个 `/favicon.ico` 404 | 内联 SVG data-URI（无额外请求） |
+| 14 | P3 | `createSidebar` 没有清理接口，测试里多实例会串扰 | `SidebarHandle.destroy?()` 解绑全局监听 |
+
+**书面裁定不修（记录在案）**
+
+| 问题 | 为什么不修 |
+| --- | --- |
+| 脏离开守卫取消 `back` 时，`pushState` 会截断前进历史（`history.length` 不变但栈内容被改写） | 这是「拦截 back 后把地址栏推回去」这种做法的固有代价，`history.length` 不增长（实测连续 5 轮 `back`+取消稳定在 4）。彻底修正需要改成「popstate 后确认、取消时 `history.go(1)`」，涉及改动编辑器离开流程的核心语义，风险大于收益；已记入后续待办。 |
+| 被顶替的渲染仍会注册编辑页全局监听（Esc / Ctrl+S 指向旧文档），要到下次导航才清掉 | 触发条件是「进编辑页的 `loadDoc` 未返回时立刻导航走」这一窄窗口。修复方向是把全局副作用从页面工厂后移到 `onMount`，属于跨 6 个文件的结构性调整；已记入后续待办，本轮不做以免扩大回归面。 |
+| `positions` Map 只增不删 | 每个条目几十字节，长会话下实际内存占用可忽略；加淘汰策略反而可能淘汰仍需要的条目。 |
+| 同源非页面链接（如 `/api/export`）会被 SPA 吞成 404 | 当前仓库没有任何这样的 `<a href>`（导出走 fetch+blob）；已知限，需将来加前缀白名单。 |
+| 编辑页侧边栏关闭时不再提供「目录」抽屉入口 | 有意为之（契约 §2.9）：编辑页是宽版沉浸编辑，给一个点了没东西的按钮更糟。 |
+
+**审查指出的测试盲区及处置**：三轮都点名「保存 → invalidateTree → 侧边栏刷新」这条链没有自动化覆盖，而 P0 自激环恰好藏在里面。已新增 `web/tests/sidebar.test.ts`（12 例），直接覆盖该链路、自激环回归、刷新失败提示、合并行契约与增量高亮；该文件在编写过程中立刻又暴露了一个真实缺陷（`createSidebar` 缺 `destroy()`），已一并修复。
+
+### 7.5 PR
+
+分支：`fix/web-spa-nav-sidebar`（基于 `master`）
+PR 链接见下方（`gh pr create` 输出）。
+

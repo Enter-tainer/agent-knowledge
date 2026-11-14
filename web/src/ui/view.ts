@@ -53,4 +53,12 @@ export interface SidebarHandle {
   refresh(): Promise<void>;
   /** 移动端抽屉（桌面调用无副作用）。 */
   openDrawer(): void;
+  /**
+   * 解绑全局监听（`kb:tree-invalidated`），让这个实例可以被丢弃。
+   *
+   * 应用里只有一个侧边栏、生命周期等于页面，所以生产代码不会调用；
+   * 但测试要创建多个实例时必须能清理，否则旧实例会继续响应事件
+   * （表现为「一次派发触发多次刷新」这种难以定位的串扰）。
+   */
+  destroy?(): void;
 }
