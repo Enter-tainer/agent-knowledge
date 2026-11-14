@@ -3,12 +3,18 @@
 本目录是 `fix/web-spa-nav-sidebar` 的**机器可复现证据**，由 `web/e2e/nav-check.mjs` 生成。
 术语与准出标准见 [`docs/web-nav-sidebar-acceptance.md`](../web-nav-sidebar-acceptance.md) §4。
 
+> **已 pseudonym 化**：仓库是公开的，`vault-src/` 永不提交（见 [`PUBLISHING.md`](../../PUBLISHING.md)）。
+> 两份 JSON 里的笔记路径/标题都已由 `node scripts/redact-evidence.mjs` 换成 `doc-NN`（映射由本地
+> `vault-src/` 的目录结构推导，脚本本身不含真实标题）。**结构、层级、同名冲突处数、所有断言数值与
+> pass/fail 判定都不变**，只有字符串被替换；两份报告在同一份 vault 上生成，`doc-NN` 编号一致，仍可逐条对比。
+> 提交任何新证据前跑 `node scripts/check-private.mjs`（必须退出码 0）。
+
 ## 文件
 
 | 文件 | 说明 |
 |---|---|
-| `baseline-nav-check.json` | **修复前**：HEAD 旧构建（`index-BMUxdCWx.js`）在 36 篇真实语料上的 full sweep（桌面 1280×900 + 移动 390×844） |
-| `after-nav-check.json` | **修复后**：新构建产物（`index-pVuRVRx_.js`）同一脚本、同一数据的 full sweep |
+| `baseline-nav-check.json` | **修复前**：HEAD 旧构建（`index-BMUxdCWx.js`）在 36 篇真实语料上的 full sweep（桌面 1280×900 + 移动 390×844），路径已 pseudonym 化 |
+| `after-nav-check.json` | **修复后**：新构建产物（`index-pVuRVRx_.js`）同一脚本、同一数据的 full sweep，路径已 pseudonym 化 |
 
 两份报告的 `build.asset` 字段写明被测 bundle，`fixture` 字段写明自动选中的巡览文档与
 「目录+同名笔记」碰撞列表，可直接对比。
@@ -23,8 +29,9 @@
 # 终端 A：把旧 dist 托管到 8899，API 借 8787 的 wrangler dev（只读，不动 D1）
 node web/e2e/serve-dist.mjs --dist .reviews-tmp/ci-final/web/dist --port 8899 --api http://127.0.0.1:8787
 
-# 终端 B：跑基线
-node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/baseline-nav-check.json
+# 终端 B：跑基线（同样先落本地，再 pseudonym 化）
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out web/e2e/reports/baseline-raw.json
+node scripts/redact-evidence.mjs --in web/e2e/reports/baseline-raw.json --out docs/evidence/baseline-nav-check.json
 ```
 
 ## 修复后结果（after-nav-check.json）
@@ -74,7 +81,11 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/base
 pnpm dev
 # 另一个终端：构建产物 + 验收
 pnpm build
-node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/after-nav-check.json
+# 先写到本地临时文件（原始报告含真实标题，不能直接提交）
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out web/e2e/reports/after-raw.json
+# pseudonym 化后再落到 docs/evidence/
+node scripts/redact-evidence.mjs --in web/e2e/reports/after-raw.json --out docs/evidence/after-nav-check.json
+node scripts/check-private.mjs   # 必须退出码 0
 ```
 
 退出码 0 = 全部机器断言通过；详细判据见 [`web/e2e/README.md`](../../web/e2e/README.md)。
@@ -82,5 +93,6 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/afte
 ## 安全
 
 报告只含 URL 路径、断言明细、DOM 文本摘要与错误消息，**不含** token / secret / 绝对文件路径。
-但 `fixture` 与断言明细里会出现本机笔记标题（真实语料），
-如仓库要开源，请确认本目录是否适合随仓库发布（或只保留在本地）。
+`fixture` 与断言明细里本来会出现真实笔记标题，所以**提交前必须过 `scripts/redact-evidence.mjs`**
+（本目录两份 JSON 都已 pseudonym 化，`node scripts/check-private.mjs` 退出码 0）。
+原始报告是本地生成物，落在 `web/e2e/reports/`（已被 `.gitignore` 与 `check-private` 跳过）。

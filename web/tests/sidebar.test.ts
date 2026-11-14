@@ -44,7 +44,7 @@ async function freshSidebar(): Promise<SidebarModule> {
   return (await import('../src/ui/sidebar')) as unknown as SidebarModule;
 }
 
-/** 合成语料里的「目录 + 同名笔记」冲突形状（4 处，这里取 3 处）。 */
+/** 「目录 + 同名笔记」冲突形状的**合成**语料（真实语料 4 处，这里取 3 处，路径已 pseudonym 化）。 */
 function fixture(): TreeEntry[] {
   const doc = (path: string, title = path.split('/').pop() ?? path): TreeEntry =>
     ({ path, title, size: 100, updated: 0 }) as unknown as TreeEntry;

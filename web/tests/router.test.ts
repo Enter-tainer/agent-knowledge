@@ -63,7 +63,7 @@ describe('parseRoute / URL 构造', () => {
       path: '中文/路径',
     });
     expect(parseRoute('/d/a%20b/c/')).toEqual({ name: 'doc', path: 'a b/c' });
-    expect(parseRoute('/d/示例库/设备乙%20逆向/')).toEqual({ name: 'doc', path: '示例库/设备乙' });
+    expect(parseRoute('/d/示例库/设备乙%20逆向/')).toEqual({ name: 'doc', path: '示例库/设备乙 逆向' });
   });
 
   it('解析编辑页与 ?new=1', () => {

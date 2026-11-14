@@ -53,6 +53,20 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:4173 --verbose
 
 **退出码**：`0` = 所有机器断言通过（skip 不算失败）；`1` = 有 fail、或脚本自身/环境出错（报告里 `fatal` 字段写明原因）。
 
+### 报告里的真实标题：提交前必须 pseudonym 化
+
+报告会带上真实笔记路径/标题（`fixture.*`、断言明细、`document.title`）。默认输出到
+`web/e2e/reports/`（ignored，且 `scripts/check-private.mjs` 跳过），可以放心落盘；
+要提交到 `docs/evidence/` 时必须先洗一遍（仓库是公开的，见 `PUBLISHING.md`）：
+
+```bash
+node scripts/redact-evidence.mjs --in web/e2e/reports/last.json --out docs/evidence/after-nav-check.json
+node scripts/check-private.mjs   # 必须退出码 0
+```
+
+`redact-evidence` 用本地 `vault-src/` 的目录结构推导 `dir-NN` / `doc-NN` 映射，
+只替换字符串、不动任何断言与统计，因此 baseline / after 两份报告仍可逐条对比。
+
 ### PowerShell 注意
 
 - `@ref` 必须加引号：`agent-browser click "@e12"`（`@` 在 PowerShell 里是数组/哈希字面量起始符）。

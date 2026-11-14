@@ -2,6 +2,10 @@
 
 > 分支：`fix/web-spa-nav-sidebar`　目标：修掉「切换页面像整页刷新」和「文章页没有目录侧边栏」。
 > 本文是**唯一契约**：实现、测试、对抗性审查都以本文为准。验收结果追加在 §7。
+>
+> **语料隐私**：本仓库是公开的，`vault-src/` 永不提交（见 `PUBLISHING.md`）。文中出现的
+> vault 路径都是**合成/pseudonym 名**（`示例库/设备甲逆向/…`、`doc-NN`），结构（层级、同名冲突处数）
+> 与真实语料一致，真实标题不进入 git；`node scripts/check-private.mjs` 必须退出码 0。
 
 ## 1. 问题（2026-11-14 基线实测，非猜测）
 
@@ -142,7 +146,9 @@ layout.openDrawer();                             // 移动端抽屉（自动带 
 用 `web/e2e/serve-dist.mjs` 把旧 dist 快照托管到 `:8899`、`/api` 反代 `:8787`，跑同一个 E2E 脚本：
 
 ```bash
-node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/baseline-nav-check.json
+node web/e2e/serve-dist.mjs --dist .reviews-tmp/ci-final/web/dist --port 8899 --api http://127.0.0.1:8787
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out web/e2e/reports/baseline-raw.json
+node scripts/redact-evidence.mjs --in web/e2e/reports/baseline-raw.json --out docs/evidence/baseline-nav-check.json
 ```
 
 结果：**desktop 2 pass / 13 fail，mobile 2 pass / 11 fail → 24 条失败**（两端各通过的 2 条是 A1、C4），逐条对应上文 P1–P3。
@@ -152,8 +158,14 @@ node web/e2e/nav-check.mjs --base http://127.0.0.1:8899 --out docs/evidence/base
 
 ```bash
 pnpm build                                            # dist/assets/index-pVuRVRx_.js
-node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out docs/evidence/after-nav-check.json
+node web/e2e/nav-check.mjs --base http://127.0.0.1:8787 --out web/e2e/reports/after-raw.json
+node scripts/redact-evidence.mjs --in web/e2e/reports/after-raw.json --out docs/evidence/after-nav-check.json
+node scripts/check-private.mjs                        # 必须退出码 0
 ```
+
+> 原始报告含真实笔记标题，所以先落 `web/e2e/reports/`（本地、ignored），再由
+> `scripts/redact-evidence.mjs` 把路径/标题换成 `doc-NN` 后才进 `docs/evidence/`。
+> 下文断言明细里的 `doc-NN` 就是这套 pseudonym。
 
 | profile | 结果 |
 | --- | --- |

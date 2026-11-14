@@ -54,12 +54,12 @@ describe('buildTree：同名「目录 + 笔记」合并', () => {
     expect(named[0]!.children.length).toBeGreaterThan(0);
   });
 
-  it('嵌套同名（示例库/汉王…）同样合并，且不会重复出现文档行', () => {
+  it('嵌套同名（示例库/设备甲逆向…）同样合并，且不会重复出现文档行', () => {
     const all = flatten(tree);
-    const hanwang = all.filter((node) => node.path === '示例库/设备甲逆向');
-    expect(hanwang).toHaveLength(1);
-    expect(hanwang[0]!.kind).toBe('dir');
-    expect(hanwang[0]!.doc?.path).toBe('示例库/设备甲逆向');
+    const nested = all.filter((node) => node.path === '示例库/设备甲逆向');
+    expect(nested).toHaveLength(1);
+    expect(nested[0]!.kind).toBe('dir');
+    expect(nested[0]!.doc?.path).toBe('示例库/设备甲逆向');
   });
 
   it('没有同名笔记的目录保持纯目录（doc 为空）', () => {
