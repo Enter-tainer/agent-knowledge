@@ -133,7 +133,7 @@ node scripts/check-private.mjs   # 必须退出码 0
   "agentBrowser": "agent-browser 0.41.0",
   "criteria": { "A1": "…", "B8": "…" },        // 条款 → 描述
   "build": { "asset": "index-XXXX.js", "health": { "ok": true, "docs": 36 } },
-  "fixture": { "tourDoc": { "path": "…" }, "collisions": ["示例库", "…"] },
+  "fixture": { "tourDoc": { "path": "…" }, "collisions": ["doc-02", "…"] },
   "profiles": {
     "desktop": {
       "viewport": "1280x900",
