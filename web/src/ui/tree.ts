@@ -1,138 +1,166 @@
-import type { TreeEntry } from '../api/types';
 import { docUrl } from '../router';
 import { el } from './dom';
-
-interface DirNode {
-  name: string;
-  path: string;
-  docs: TreeNode[];
-  dirs: Map<string, DirNode>;
-}
-
-export interface TreeNode {
-  name: string;
-  path: string;
-  kind: 'dir' | 'doc';
-  doc?: TreeEntry;
-  children: TreeNode[];
-}
-
-const collator = new Intl.Collator('zh-Hans-CN', { numeric: true, sensitivity: 'base' });
-
-/** path 按 `/` 分层；同一层内目录在前、文档在后。 */
-export function buildTree(entries: TreeEntry[]): TreeNode[] {
-  const root: DirNode = { name: '', path: '', docs: [], dirs: new Map() };
-
-  for (const entry of entries) {
-    const segs = entry.path.split('/').filter(Boolean);
-    if (segs.length === 0) continue;
-    let dir = root;
-    for (let i = 0; i < segs.length - 1; i++) {
-      const name = segs[i];
-      const path = segs.slice(0, i + 1).join('/');
-      let next = dir.dirs.get(name);
-      if (!next) {
-        next = { name, path, docs: [], dirs: new Map() };
-        dir.dirs.set(name, next);
-      }
-      dir = next;
-    }
-    const name = entry.title || segs[segs.length - 1];
-    dir.docs.push({ name, path: entry.path, kind: 'doc', doc: entry, children: [] });
-  }
-
-  return finalize(root);
-}
-
-function finalize(dir: DirNode): TreeNode[] {
-  const dirs: TreeNode[] = [...dir.dirs.values()]
-    .map((child) => ({
-      name: child.name,
-      path: child.path,
-      kind: 'dir' as const,
-      children: finalize(child),
-    }))
-    .sort((a, b) => collator.compare(a.name, b.name));
-
-  const docs = dir.docs.slice().sort((a, b) => collator.compare(a.name, b.name));
-  return [...dirs, ...docs];
-}
-
-export function countDocs(nodes: TreeNode[]): number {
-  let n = 0;
-  for (const node of nodes) {
-    if (node.kind === 'doc') n += 1;
-    else n += countDocs(node.children);
-  }
-  return n;
-}
+import { ancestorsOf, countDocs, type TreeNode } from './tree-model';
 
 export interface TreeRenderOptions {
-  /** 目录默认收起（移动端抽屉用，避免一次展开 4500px）。 */
-  startCollapsed?: boolean;
+  /** 当前文档路径：高亮 + 祖先目录自动展开。 */
+  currentPath?: string;
+  /** 已展开的目录路径（由调用方持有，切换/刷新后保留）。 */
+  openPaths?: ReadonlySet<string>;
+  /** 目录展开/收起时回调，调用方负责记住状态。 */
+  onToggle?: (path: string, open: boolean) => void;
+  /** 内部递归用：已解析的展开集合。 */
+  resolvedOpenPaths?: ReadonlySet<string>;
 }
 
-/** 当前文档的所有祖先目录（用于自动展开 + 保证当前项可见）。 */
-function ancestorsOf(path: string | undefined): Set<string> {
-  const out = new Set<string>();
-  if (!path) return out;
-  const parts = path.split('/').filter(Boolean);
-  for (let i = 1; i < parts.length; i++) out.add(parts.slice(0, i).join('/'));
-  return out;
+interface RenderContext {
+  currentPath?: string;
+  openPaths: ReadonlySet<string>;
+  onToggle?: (path: string, open: boolean) => void;
 }
 
-export function renderTree(
-  nodes: TreeNode[],
-  currentPath?: string,
-  options: TreeRenderOptions = {},
-): HTMLElement {
+let renderSeq = 0;
+
+/** 渲染整棵树（纯展示；展开状态由调用方通过 openPaths 控制）。 */
+export function renderTree(nodes: TreeNode[], options: TreeRenderOptions = {}): HTMLElement {
   const root = el('ul', { class: 'tree-list' });
-  appendNodes(root, nodes, currentPath, options, ancestorsOf(currentPath));
+  const context: RenderContext = {
+    currentPath: options.currentPath,
+    openPaths: options.resolvedOpenPaths ?? options.openPaths ?? new Set(ancestorsOf(options.currentPath)),
+    onToggle: options.onToggle,
+  };
+  appendNodes(root, nodes, { ...context, seq: ++renderSeq });
   return root;
 }
 
-function appendNodes(
-  parent: HTMLUListElement,
-  nodes: TreeNode[],
-  currentPath: string | undefined,
-  options: TreeRenderOptions,
-  openPaths: Set<string>,
-): void {
+interface ResolvedContext extends RenderContext {
+  seq: number;
+}
+
+function appendNodes(parent: HTMLUListElement, nodes: TreeNode[], context: ResolvedContext): void {
   for (const node of nodes) {
     const item = el('li', { class: `tree-item tree-item-${node.kind}` });
 
     if (node.kind === 'dir') {
-      const details = el('details', { class: 'tree-dir' });
-      const count = countDocs(node.children);
-      const shouldOpen = !options.startCollapsed || openPaths.has(node.path);
-      if (shouldOpen) details.open = true;
-      const summary = el(
-        'summary',
-        { class: 'tree-dir-label' },
-        el('span', { class: 'tree-caret', 'aria-hidden': 'true' }),
-        el('span', { class: 'tree-name', text: node.name }),
-        el('span', { class: 'tree-count', text: `${count} 篇` }),
-      );
-      const childList = el('ul', { class: 'tree-list tree-list-child' });
-      appendNodes(childList, node.children, currentPath, options, openPaths);
-      details.append(summary, childList);
-      item.appendChild(details);
+      const count = countDocs(node.children) + (node.doc ? 1 : 0);
+      if (node.doc) {
+        appendMergedDir(item, node, count, context);
+      } else {
+        appendPlainDir(item, node, count, context);
+      }
     } else {
-      const active = node.path === currentPath;
-      item.appendChild(
-        el(
-          'a',
-          {
-            class: active ? 'tree-doc tree-doc-active' : 'tree-doc',
-            href: docUrl(node.path),
-            title: node.path,
-            'aria-current': active ? 'page' : null,
-          },
-          el('span', { class: 'tree-doc-name', text: node.name }),
-        ),
-      );
+      item.appendChild(docLink(node.path, node.name, context.currentPath, 'tree-doc'));
     }
 
     parent.appendChild(item);
   }
+}
+
+/** 普通目录：`<details>/<summary>`，点整行展开。 */
+function appendPlainDir(item: HTMLElement, node: TreeNode, count: number, context: ResolvedContext): void {
+  const details = el('details', { class: 'tree-dir', 'data-dir-path': node.path });
+  if (context.openPaths.has(node.path)) details.open = true;
+  const summary = el(
+    'summary',
+    { class: 'tree-dir-label' },
+    el('span', { class: 'tree-caret', 'aria-hidden': 'true' }),
+    el('span', { class: 'tree-name', text: node.name }),
+    el('span', { class: 'tree-count', text: `${count} 篇` }),
+  );
+  const childList = el('ul', { class: 'tree-list tree-list-child' });
+  appendNodes(childList, node.children, context);
+  details.append(summary, childList);
+  details.addEventListener('toggle', () => {
+    context.onToggle?.(node.path, details.open);
+  });
+  item.appendChild(details);
+}
+
+/**
+ * 「目录 + 同名笔记」合并行（`/root/test.md` + `/root/test/aaa.md` → 只有一行 `test`）：
+ * - 点名称 → 打开那篇笔记（锚点，交给 router 的 SPA 接管）；
+ * - 点右侧箭头**或中间的「N 篇」徽标** → 展开/收起子目录（button，`aria-expanded`）。
+ *
+ * 用「a + 两个并列 button」而不是把 a 塞进 summary，避免嵌套交互控件的可访问性问题
+ * 与点击歧义。两个按钮共用同一份 `aria-controls` / `aria-expanded`，点哪个都同步。
+ * 徽标可点是用户明确提的需求：手自然落在「8 篇」那里，点它也应该能展树。
+ */
+function appendMergedDir(item: HTMLElement, node: TreeNode, count: number, context: ResolvedContext): void {
+  const open = context.openPaths.has(node.path);
+  const listId = `tree-children-${context.seq}-${++idSeq}`;
+  const childList = el('ul', { class: 'tree-list tree-list-child', id: listId });
+  childList.hidden = !open;
+  appendNodes(childList, node.children, context);
+
+  const label = node.name;
+  const toggles: HTMLButtonElement[] = [];
+  const ariaToggleLabel = (isOpen: boolean): string => `${isOpen ? '收起' : '展开'} ${label} 的子目录`;
+  const applyState = (nextOpen: boolean): void => {
+    childList.hidden = !nextOpen;
+    for (const button of toggles) {
+      button.setAttribute('aria-expanded', nextOpen ? 'true' : 'false');
+      button.setAttribute('aria-label', ariaToggleLabel(nextOpen));
+      button.title = ariaToggleLabel(nextOpen);
+    }
+  };
+  const onToggleClick = (event: Event): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    applyState(childList.hidden);
+    context.onToggle?.(node.path, childList.hidden === false);
+  };
+
+  const caretToggle = el(
+    'button',
+    {
+      type: 'button',
+      class: 'tree-dir-toggle',
+      'aria-expanded': open ? 'true' : 'false',
+      'aria-controls': listId,
+      'aria-label': ariaToggleLabel(open),
+      title: ariaToggleLabel(open),
+      onclick: onToggleClick,
+    },
+    el('span', { class: 'tree-caret', 'aria-hidden': 'true' }),
+  );
+
+  const countToggle = el('button', {
+    type: 'button',
+    class: 'tree-count tree-count-btn',
+    'aria-expanded': open ? 'true' : 'false',
+    'aria-controls': listId,
+    'aria-label': ariaToggleLabel(open),
+    title: ariaToggleLabel(open),
+    onclick: onToggleClick,
+    text: `${count} 篇`,
+  });
+  toggles.push(caretToggle, countToggle);
+
+  const row = el(
+    'div',
+    { class: 'tree-dir-row', 'data-dir-path': node.path, 'data-merged': '1' },
+    docLink(node.path, node.doc?.title || node.name, context.currentPath, 'tree-doc tree-doc-inline'),
+    countToggle,
+    caretToggle,
+  );
+
+  item.appendChild(row);
+  item.appendChild(childList);
+}
+
+let idSeq = 0;
+
+function docLink(path: string, label: string, currentPath: string | undefined, className: string): HTMLElement {
+  const active = path === currentPath;
+  return el(
+    'a',
+    {
+      class: active ? `${className} tree-doc-active` : className,
+      href: docUrl(path),
+      title: path,
+      'data-doc-path': path,
+      'aria-current': active ? 'page' : null,
+    },
+    el('span', { class: 'tree-doc-name', text: label }),
+  );
 }

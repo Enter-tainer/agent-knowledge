@@ -5,6 +5,7 @@ vault-src/
 node_modules/
 .pnpm-store/
 .wrangler/
+.wrangler-dry/
 dist/
 web/dist/
 .scratch/

@@ -272,17 +272,6 @@ textarea {
 
 /* ------------------------------- 首页布局 ------------------------------- */
 
-.home-grid {
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
-  gap: 28px;
-  align-items: start;
-  width: 100%;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 22px 24px 64px;
-}
-
 .sidebar {
   position: sticky;
   top: calc(var(--topbar-h) + 16px);
@@ -292,10 +281,6 @@ textarea {
 }
 
 .sidebar-head {
-  display: none;
-}
-
-.sidebar-fold > summary {
   display: none;
 }
 
@@ -337,13 +322,27 @@ textarea {
   background: var(--bg-soft);
 }
 
+/*
+ * 目录展开箭头。元素本身是空 `<span aria-hidden="true">`（装饰性），
+ * 字形由 ::before 提供 —— 之前只给了宽度和 transform、没有 content，
+ * 结果是一个 0×12 的空白条：用户看不到「这里能展开」，只能瞎点。
+ */
 .tree-caret {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 12px;
   color: var(--text-muted);
   font-size: 10px;
+  line-height: 1;
   transform: rotate(90deg);
   transition: transform 0.12s ease;
+}
+
+.tree-caret::before {
+  content: '▸';
+  font-size: 11px;
+  line-height: 1;
 }
 
 details:not([open]) > .tree-dir-label > .tree-caret {
@@ -1259,12 +1258,6 @@ details:not([open]) > .tree-dir-label > .tree-caret {
     padding: 6px 8px;
   }
 
-  .home-grid {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-    padding: 14px 14px 48px;
-  }
-
   .sidebar {
     position: static;
     max-height: none;
@@ -1274,28 +1267,6 @@ details:not([open]) > .tree-dir-label > .tree-caret {
 
   .sidebar-head {
     display: none;
-  }
-
-  .sidebar-fold > summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 14px;
-    font-size: 15px;
-    font-weight: 650;
-    background: #fff;
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    cursor: pointer;
-    list-style: none;
-  }
-
-  .sidebar-fold > summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .sidebar-fold[open] > summary {
-    margin-bottom: 8px;
   }
 
   .sidebar-body {
@@ -1885,28 +1856,6 @@ pre.code-block.is-scrollable {
 
 /* ---------- 目录抽屉 ---------- */
 
-.tree-open-btn {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-height: 50px;
-  margin-bottom: 14px;
-  padding: 0 16px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text);
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-}
-
-.tree-open-icon {
-  font-size: 17px;
-  color: var(--text-muted);
-}
-
 .tree-drawer-overlay {
   position: fixed;
   inset: 0;
@@ -2318,18 +2267,8 @@ pre.code-block.is-scrollable {
     flex: 0 0 34%;
   }
 
-  /* 手机上隐藏桌面用的侧边栏（改用抽屉） */
+  /* 手机上隐藏桌面用的侧边栏（改用顶栏「☰ 目录」抽屉） */
   .sidebar {
-    display: none;
-  }
-
-  .home-grid {
-    padding-top: 10px;
-  }
-}
-
-@media (min-width: 861px) {
-  .tree-open-btn {
     display: none;
   }
 }
@@ -2342,5 +2281,121 @@ pre.code-block.is-scrollable {
 
   .edit-actions .btn {
     padding: 0 12px;
+  }
+}
+
+/* ==========================================================================
+   持久 shell 布局（web-nav-sidebar 修复）
+   .app-shell 只挂载一次；导航只替换 .page-content 的子节点。
+   ========================================================================== */
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.nav-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 70;
+  background: linear-gradient(90deg, var(--accent), #7aa5f8);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.nav-progress[data-active='true'] {
+  opacity: 1;
+  animation: nav-progress-run 1.1s ease-in-out infinite;
+}
+
+@keyframes nav-progress-run {
+  0% {
+    transform: scaleX(0.05);
+  }
+  50% {
+    transform: scaleX(0.6);
+  }
+  100% {
+    transform: scaleX(0.96);
+  }
+}
+
+.app-body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 28px;
+  align-items: start;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 20px 24px 64px;
+}
+
+.app-body[data-sidebar='off'],
+.app-shell-wide .app-body {
+  display: block;
+  max-width: none;
+  padding: 0;
+}
+
+.page-content {
+  min-width: 0;
+  width: 100%;
+}
+
+.page-content:focus {
+  outline: none;
+}
+
+/* 内容页自带 max-width + 居中；外层已经给了左右 padding，这里只保留上下节奏 */
+.page-content > .doc-page,
+.page-content > .search-page,
+.page-content > .reports-page {
+  padding-top: 0;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.page-content > .main-column,
+.page-content > .edit-page {
+  padding: 0;
+}
+
+/* 顶栏「目录」按钮：桌面隐藏，移动端打开抽屉 */
+.nav-tree-btn {
+  display: none;
+}
+
+@media (max-width: 860px) {
+  .app-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    padding: 0 0 48px;
+  }
+
+  .app-body[data-sidebar='off'],
+  .app-shell-wide .app-body {
+    padding: 0;
+  }
+
+  .page-content > .doc-page,
+  .page-content > .search-page,
+  .page-content > .reports-page {
+    padding: 16px 14px 64px;
+  }
+
+  .page-content > .main-column {
+    padding: 10px 14px 0;
+  }
+
+  .nav-tree-btn {
+    display: inline-flex;
   }
 }

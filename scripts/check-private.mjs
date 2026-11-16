@@ -6,7 +6,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = process.cwd();
-const SKIP_DIRS = new Set(['node_modules', 'vault-src', '.wrangler', '.auth', '.reviews-tmp', '.scratch', 'dist', '.git', 'reviews', 'corpus']);
+const SKIP_DIRS = new Set(['node_modules', 'vault-src', '.wrangler', '.wrangler-dry', '.auth', '.reviews-tmp', '.scratch', 'dist', '.git', 'reviews', 'corpus']);
+// 本地生成物：端到端原始报告（真实标题一定在里面，提交前要用 redact-evidence 洗过）
+const SKIP_PREFIXES = ['web/e2e/reports/'];
 const SKIP_FILES = new Set(['scripts/check-private.mjs', 'PUBLISHING.md', 'pnpm-lock.yaml', 'research/bench/results.json']);
 const TEXT_EXT = new Set(['.md', '.ts', '.mjs', '.js', '.json', '.toml', '.sql', '.yml', '.yaml', '.csv', '.txt', '.html', '.css']);
 
@@ -31,6 +33,7 @@ function* walk(dir) {
     }
     if (st.isDirectory()) {
       if (SKIP_DIRS.has(name)) continue;
+      if (SKIP_PREFIXES.some((prefix) => `${rel}/`.startsWith(prefix))) continue;
       yield* walk(full);
     } else if (TEXT_EXT.has(name.slice(name.lastIndexOf('.'))) && !SKIP_FILES.has(rel)) {
       yield full;

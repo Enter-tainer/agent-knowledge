@@ -1,0 +1,736 @@
+{
+  "generatedAt": "2026-11-14T17:19:25.084Z",
+  "base": "http://127.0.0.1:8787",
+  "node": "v24.18.1",
+  "platform": "win32-x64",
+  "agentBrowser": "agent-browser 0.41.0",
+  "criteria": {
+    "A1": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
+    "A2": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无整页 spinner（.state-loading 不越出 .page-content）",
+    "A3": "顶栏搜索框值跨导航保留、未被抢焦点；搜索页保留 ?q=",
+    "A4": ".page-content 导航期间从不为空，aria-busy 加载期为 true、完成后清除",
+    "A5": "push 进入回顶；后退/前进恢复各自 scrollY；#hash 深链渲染后滚到锚点",
+    "A6": "document.title 随路由更新；未知路由在 shell 内渲染「页面不存在」（含侧边栏与搜索框）",
+    "B1": "桌面 /d/ 页有可见 aside.sidebar（宽>100、在内容左侧），树节点数>0",
+    "B2": "当前文档 .tree-doc[aria-current=page] 唯一、祖先 details 全开、节点在侧边栏可视区",
+    "B3": "home→doc→另一篇 doc：侧边栏 DOM 引用不变、scrollTop 不被重置、/api/tree ≤1 次",
+    "B4": "/、/search、/reports 有侧边栏；/edit/ 无侧边栏（宽版）；移动端侧边栏隐藏并给「目录」按钮",
+    "B5": "抽屉：Esc/遮罩/点链接都关闭、焦点回触发按钮、无残留 no-scroll、（窄屏）",
+    "B6": "404 / 页面级错误态仍在 shell 内并保留侧边栏",
+    "B7": "目录树加载失败：侧边栏显示可重试错误，正文仍可用；重试后树恢复",
+    "B8": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc、.tree-dir-toggle 与可点的「N 篇」徽标（三者同 aria-controls），无重复行",
+    "C4": "巡览全程无 console.error / pageerror / 非预期 4xx-5xx",
+    "C5": "导航后焦点落在内容区；侧边栏 nav[aria-label]；抽屉 role=dialog aria-modal"
+  },
+  "build": {
+    "base": "http://127.0.0.1:8787",
+    "indexStatus": 200,
+    "asset": "index-UFD7i_dS.js",
+    "htmlTitle": "私有知识库",
+    "healthStatus": 200,
+    "health": {
+      "ok": true,
+      "docs": 36,
+      "tokenizerVersion": 1,
+      "stale": 0
+    },
+    "docs": 36
+  },
+  "fixture": {
+    "docsCount": 36,
+    "collisions": [
+      "doc-02",
+      "doc-08",
+      "doc-16",
+      "doc-27"
+    ],
+    "tourDoc": {
+      "path": "doc-10",
+      "title": "doc-10",
+      "size": 39566
+    },
+    "scrollDoc": {
+      "path": "doc-10",
+      "title": "doc-10",
+      "size": 39566
+    },
+    "secondDoc": {
+      "path": "doc-35",
+      "title": "doc-35",
+      "size": 14024
+    }
+  },
+  "profiles": {
+    "desktop": {
+      "profile": "desktop",
+      "viewport": "1280x900",
+      "session": "kbux-e2e-53284-desktop",
+      "startedAt": "2026-11-14T17:19:25.664Z",
+      "durationMs": 21719,
+      "phases": [
+        {
+          "name": "viewport",
+          "ok": true,
+          "width": 1280
+        },
+        {
+          "name": "tour",
+          "ok": true,
+          "ms": 11030
+        },
+        {
+          "name": "drawer",
+          "ok": true,
+          "ms": 0
+        },
+        {
+          "name": "tree-failure",
+          "ok": true,
+          "ms": 2133
+        },
+        {
+          "name": "deep-link",
+          "ok": true,
+          "ms": 1132
+        },
+        {
+          "name": "edit",
+          "ok": true,
+          "ms": 1266
+        },
+        {
+          "name": "not-found",
+          "ok": true,
+          "ms": 2143
+        },
+        {
+          "name": "audit",
+          "ok": true,
+          "ms": 169
+        }
+      ],
+      "assertions": [
+        {
+          "id": "A1",
+          "title": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
+          "status": "pass",
+          "details": [
+            "启动时 navigation 条目=1、timeOrigin=1794676767029",
+            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794676767050→1794676767050"
+          ],
+          "measured": {
+            "bootNavCount": 1,
+            "bootTimeOrigin": 1794676767028.6,
+            "bootAt": 1794676767050,
+            "finalNavCount": 1,
+            "timeOriginStable": true,
+            "bootAtStable": true
+          }
+        },
+        {
+          "id": "A2",
+          "title": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无整页 spinner（.state-loading 不越出 .page-content）",
+          "status": "pass",
+          "details": [
+            "首屏 shell/topbar/aside.sidebar=true/true/true",
+            "进入文章后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "wikilink 导航后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "搜索页：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "报告页：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "回首页后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "后退/前进后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0"
+          ],
+          "measured": {
+            "bootTreeDocs": 36,
+            "docIdentity": "shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0"
+          }
+        },
+        {
+          "id": "A3",
+          "title": "顶栏搜索框值跨导航保留、未被抢焦点；搜索页保留 ?q=",
+          "status": "pass",
+          "details": [
+            "首页搜索框输入「压感」并聚焦：true",
+            "文章页搜索框值=\"压感\"、activeElement=H1（不应是 INPUT/搜索框）",
+            "搜索页 URL=/search?q=%E5%8E%8B%E6%84%9F、搜索框值=\"压感\""
+          ],
+          "measured": {
+            "typed": {
+              "focused": true,
+              "ok": true,
+              "value": "压感"
+            },
+            "docSearchValue": "压感",
+            "searchQuery": "?q=%E5%8E%8B%E6%84%9F",
+            "searchPageValue": "压感"
+          }
+        },
+        {
+          "id": "A4",
+          "title": ".page-content 导航期间从不为空，aria-busy 加载期为 true、完成后清除",
+          "status": "pass",
+          "details": [
+            "进入文章后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=2/2",
+            "wikilink 导航后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=3/3",
+            "搜索页：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=4/4",
+            "报告页：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=5/5",
+            "回首页后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=6/6",
+            "后退/前进后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=9/9"
+          ],
+          "measured": {
+            "docBusyTrue": 2,
+            "docBusyFalse": 2
+          }
+        },
+        {
+          "id": "A5",
+          "title": "push 进入回顶；后退/前进恢复各自 scrollY；#hash 深链渲染后滚到锚点",
+          "status": "pass",
+          "details": [
+            "push scrollY=0(期望0)；后退=400(记录 400)；前进=300(记录 300)",
+            "深链 raw=#gatt-%E4%B8%8E%E8%BF%9E%E6%8E%A5 decoded=#gatt-与连接：锚点 rect.top=80（应在视口顶部区域 ≤120px）、scrollY=2667"
+          ],
+          "measured": {
+            "pushScroll": 0,
+            "homeScroll": 400,
+            "backScroll": 400,
+            "docScroll": 300,
+            "forwardScroll": 300,
+            "hashScrollY": 2667,
+            "hashRectTop": 80,
+            "hashRaw": "#gatt-%E4%B8%8E%E8%BF%9E%E6%8E%A5"
+          }
+        },
+        {
+          "id": "A6",
+          "title": "document.title 随路由更新；未知路由在 shell 内渲染「页面不存在」（含侧边栏与搜索框）",
+          "status": "pass",
+          "details": [
+            "文章页 title=doc-10 · 私有知识库",
+            "搜索页 title=搜索「压感」 · 私有知识库",
+            "报告页 title=报告 · 私有知识库",
+            "未知路由：shell=true topbar=true 侧边栏=true 搜索框=true 内容区含「页面不存在」=true"
+          ],
+          "measured": {
+            "docTitle": "doc-10 · 私有知识库",
+            "searchTitle": "搜索「压感」 · 私有知识库",
+            "reportsTitle": "报告 · 私有知识库",
+            "notfoundText": "页面不存在这个地址没有对应的页面。可以用顶部搜索找笔记，或回目录。回目录"
+          }
+        },
+        {
+          "id": "B1",
+          "title": "桌面 /d/ 页有可见 aside.sidebar（宽>100、在内容左侧），树节点数>0",
+          "status": "pass",
+          "details": [
+            "文章页侧边栏：宽=280 left=74 < 内容 left=382、树节点=36"
+          ],
+          "measured": {
+            "docSidebarWidth": 280,
+            "docTreeDocs": 36
+          }
+        },
+        {
+          "id": "B2",
+          "title": "当前文档 .tree-doc[aria-current=page] 唯一、祖先 details 全开、节点在侧边栏可视区",
+          "status": "pass",
+          "details": [
+            "aria-current 唯一=1、当前=doc-10、在可视区=true、祖先行展开=[{\"path\":\"doc-02\",\"exists\":true,\"merged\":true,\"openOk\":true},{\"path\":\"doc-08\",\"exists\":true,\"merged\":true,\"openOk\":true}]"
+          ],
+          "measured": {
+            "b2CurrentPath": "doc-10",
+            "b2Ancestors": [
+              {
+                "path": "doc-02",
+                "exists": true,
+                "merged": true,
+                "openOk": true
+              },
+              {
+                "path": "doc-08",
+                "exists": true,
+                "merged": true,
+                "openOk": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "B3",
+          "title": "home→doc→另一篇 doc：侧边栏 DOM 引用不变、scrollTop 不被重置、/api/tree ≤1 次",
+          "status": "pass",
+          "details": [
+            "侧边栏引用不变=true、scrollTop 120→197、本次导航 /api/tree=0 次"
+          ],
+          "measured": {
+            "b3ScrollTopBefore": 120,
+            "b3ScrollTopAfter": 197,
+            "b3TreeRequests": 0
+          }
+        },
+        {
+          "id": "B4",
+          "title": "/、/search、/reports 有侧边栏；/edit/ 无侧边栏（宽版）；移动端侧边栏隐藏并给「目录」按钮",
+          "status": "pass",
+          "details": [
+            "桌面首页侧边栏：宽=280 display=block 树节点=36",
+            "桌面搜索页侧边栏：宽=280 树节点=36",
+            "桌面报告页侧边栏：宽=280",
+            "编辑页（桌面）：侧边栏 display=none（无侧边栏=false）、宽版 shell=true、正文子节点=1"
+          ],
+          "measured": {
+            "homeSidebarWidth": 280,
+            "homeTreeDocs": 36,
+            "searchSidebarWidth": 280,
+            "editSidebarDisplay": "none",
+            "editShellWide": true
+          }
+        },
+        {
+          "id": "B5",
+          "title": "抽屉：Esc/遮罩/点链接都关闭、焦点回触发按钮、无残留 no-scroll、（窄屏）",
+          "status": "skip",
+          "details": [
+            "抽屉仅在移动端（≤860px）可见；桌面侧边栏常驻"
+          ],
+          "measured": null
+        },
+        {
+          "id": "B6",
+          "title": "404 / 页面级错误态仍在 shell 内并保留侧边栏",
+          "status": "pass",
+          "details": [
+            "未知路由留在 shell 内：shell=true 侧边栏=true 内容子节点=1",
+            "缺失文档：shell=true 侧边栏=true 内容子节点=1 内容区文案=\"← 目录没有这篇笔记它可能已经被删除、改了名字，或者链接写错了。你可以搜一下，或从目录里找。搜索这个标题回目录＋ 新建笔\""
+          ],
+          "measured": {
+            "notfoundContentChildren": 1,
+            "missingDocText": "← 目录没有这篇笔记它可能已经被删除、改了名字，或者链接写错了。你可以搜一下，或从目录里找。搜索这个标题回目录＋ 新建笔记你可能想找doc-34案例"
+          }
+        },
+        {
+          "id": "B7",
+          "title": "目录树加载失败：侧边栏显示可重试错误，正文仍可用；重试后树恢复",
+          "status": "pass",
+          "details": [
+            "树失败时：侧边栏错误=true 重试按钮=true 正文子节点=1 整页 spinner=false",
+            "重试后：侧边栏树节点=36、正文子节点=1"
+          ],
+          "measured": {
+            "b7SidebarError": true,
+            "b7ContentChildren": 1,
+            "b7RecoveredTreeDocs": 36
+          }
+        },
+        {
+          "id": "B8",
+          "title": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc、.tree-dir-toggle 与可点的「N 篇」徽标（三者同 aria-controls），无重复行",
+          "status": "pass",
+          "details": [
+            "同名合并行：doc-02（行数=1）；doc-08（行数=1）；doc-16（行数=1）；doc-27（行数=1）",
+            "合并行「doc-16」：箭头 aria-expanded true→false（徽标同步=false），点「6 篇」徽标 true（箭头同步=true、子列表 hidden=false）"
+          ],
+          "measured": {
+            "b8Collisions": [
+              {
+                "path": "doc-02",
+                "occurrences": 1,
+                "ok": true
+              },
+              {
+                "path": "doc-08",
+                "occurrences": 1,
+                "ok": true
+              },
+              {
+                "path": "doc-16",
+                "occurrences": 1,
+                "ok": true
+              },
+              {
+                "path": "doc-27",
+                "occurrences": 1,
+                "ok": true
+              }
+            ],
+            "b8Toggle": {
+              "afterBadge": "true",
+              "afterCaret": "false",
+              "badgeControls": "tree-children-2-8",
+              "badgeLabel": "6 篇",
+              "badgeSynced": "false",
+              "before": "true",
+              "caretSynced": "true",
+              "controls": "tree-children-2-8",
+              "hasControls": true,
+              "hiddenAfterBadge": false,
+              "hiddenAfterCaret": true
+            }
+          }
+        },
+        {
+          "id": "C4",
+          "title": "巡览全程无 console.error / pageerror / 非预期 4xx-5xx",
+          "status": "pass",
+          "details": [
+            "console.error=0、pageerror=0、unhandledrejection=0、非预期 4xx/5xx=0"
+          ],
+          "measured": {
+            "consoleErrors": [],
+            "pageErrors": [],
+            "rejections": [],
+            "unexpectedNetwork": []
+          }
+        },
+        {
+          "id": "C5",
+          "title": "导航后焦点落在内容区；侧边栏 nav[aria-label]；抽屉 role=dialog aria-modal",
+          "status": "pass",
+          "details": [
+            "导航后焦点在 .page-content 内=true（activeElement=H1）",
+            "侧边栏存在 nav[aria-label]",
+            "搜索页焦点在内容区=true（H1）",
+            "报告页焦点在内容区=true（H1）"
+          ],
+          "measured": {
+            "docActiveElement": "H1"
+          }
+        }
+      ],
+      "summary": {
+        "pass": 15,
+        "fail": 0,
+        "skip": 1
+      },
+      "errors": {
+        "consoleErrors": [],
+        "pageErrors": [],
+        "rejections": []
+      }
+    },
+    "mobile": {
+      "profile": "mobile",
+      "viewport": "390x844",
+      "session": "kbux-e2e-53284-mobile",
+      "startedAt": "2026-11-14T17:19:47.383Z",
+      "durationMs": 26386,
+      "phases": [
+        {
+          "name": "viewport",
+          "ok": true,
+          "width": 390
+        },
+        {
+          "name": "tour",
+          "ok": true,
+          "ms": 9800
+        },
+        {
+          "name": "drawer",
+          "ok": true,
+          "ms": 6245
+        },
+        {
+          "name": "tree-failure",
+          "ok": true,
+          "ms": 2092
+        },
+        {
+          "name": "deep-link",
+          "ok": true,
+          "ms": 1109
+        },
+        {
+          "name": "edit",
+          "ok": true,
+          "ms": 1238
+        },
+        {
+          "name": "not-found",
+          "ok": true,
+          "ms": 2075
+        },
+        {
+          "name": "audit",
+          "ok": true,
+          "ms": 146
+        }
+      ],
+      "assertions": [
+        {
+          "id": "A1",
+          "title": "巡览全程 performance navigation 条目=1，__kbBootAt（数字）/timeOrigin 不变",
+          "status": "pass",
+          "details": [
+            "启动时 navigation 条目=1、timeOrigin=1794676788635",
+            "巡览后 navigation 条目=1（启动 1）、timeOrigin 不变=true、__kbBootAt=1794676788657→1794676788657"
+          ],
+          "measured": {
+            "bootNavCount": 1,
+            "bootTimeOrigin": 1794676788635.1,
+            "bootAt": 1794676788657,
+            "finalNavCount": 1,
+            "timeOriginStable": true,
+            "bootAtStable": true
+          }
+        },
+        {
+          "id": "A2",
+          "title": "app-shell/topbar/aside.sidebar 引用不变、从未被移除、无整页 spinner（.state-loading 不越出 .page-content）",
+          "status": "pass",
+          "details": [
+            "首屏 shell/topbar/aside.sidebar=true/true/true",
+            "进入文章后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "wikilink 导航后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "搜索页：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "报告页：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "回首页后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0",
+            "后退/前进后：shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0"
+          ],
+          "measured": {
+            "bootTreeDocs": 36,
+            "docIdentity": "shellSame=true topbarSame=true sidebarSame=true 被移除=[] bootSpinner=0"
+          }
+        },
+        {
+          "id": "A3",
+          "title": "顶栏搜索框值跨导航保留、未被抢焦点；搜索页保留 ?q=",
+          "status": "pass",
+          "details": [
+            "首页搜索框输入「压感」并聚焦：true",
+            "文章页搜索框值=\"压感\"、activeElement=H1（不应是 INPUT/搜索框）",
+            "搜索页 URL=/search?q=%E5%8E%8B%E6%84%9F、搜索框值=\"压感\""
+          ],
+          "measured": {
+            "typed": {
+              "focused": true,
+              "ok": true,
+              "value": "压感"
+            },
+            "docSearchValue": "压感",
+            "searchQuery": "?q=%E5%8E%8B%E6%84%9F",
+            "searchPageValue": "压感"
+          }
+        },
+        {
+          "id": "A4",
+          "title": ".page-content 导航期间从不为空，aria-busy 加载期为 true、完成后清除",
+          "status": "pass",
+          "details": [
+            "进入文章后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=2/2",
+            "wikilink 导航后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=3/3",
+            "搜索页：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=4/4",
+            "报告页：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=5/5",
+            "回首页后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=6/6",
+            "后退/前进后：内容子节点=1 aria-busy=null 导航中空内容采样=0 busy true/false=9/9"
+          ],
+          "measured": {
+            "docBusyTrue": 2,
+            "docBusyFalse": 2
+          }
+        },
+        {
+          "id": "A5",
+          "title": "push 进入回顶；后退/前进恢复各自 scrollY；#hash 深链渲染后滚到锚点",
+          "status": "pass",
+          "details": [
+            "push scrollY=0(期望0)；后退=400(记录 400)；前进=300(记录 300)",
+            "深链 raw=#gatt-%E4%B8%8E%E8%BF%9E%E6%8E%A5 decoded=#gatt-与连接：锚点 rect.top=120（应在视口顶部区域 ≤120px）、scrollY=2755"
+          ],
+          "measured": {
+            "pushScroll": 0,
+            "homeScroll": 400,
+            "backScroll": 400,
+            "docScroll": 300,
+            "forwardScroll": 300,
+            "hashScrollY": 2755,
+            "hashRectTop": 120,
+            "hashRaw": "#gatt-%E4%B8%8E%E8%BF%9E%E6%8E%A5"
+          }
+        },
+        {
+          "id": "A6",
+          "title": "document.title 随路由更新；未知路由在 shell 内渲染「页面不存在」（含侧边栏与搜索框）",
+          "status": "pass",
+          "details": [
+            "文章页 title=doc-10 · 私有知识库",
+            "搜索页 title=搜索「压感」 · 私有知识库",
+            "报告页 title=报告 · 私有知识库",
+            "未知路由：shell=true topbar=true 侧边栏=true 搜索框=true 内容区含「页面不存在」=true"
+          ],
+          "measured": {
+            "docTitle": "doc-10 · 私有知识库",
+            "searchTitle": "搜索「压感」 · 私有知识库",
+            "reportsTitle": "报告 · 私有知识库",
+            "notfoundText": "页面不存在这个地址没有对应的页面。可以用顶部搜索找笔记，或回目录。回目录"
+          }
+        },
+        {
+          "id": "B1",
+          "title": "桌面 /d/ 页有可见 aside.sidebar（宽>100、在内容左侧），树节点数>0",
+          "status": "skip",
+          "details": [
+            "桌面专用断言（移动端由 B4/B5 覆盖）"
+          ],
+          "measured": null
+        },
+        {
+          "id": "B2",
+          "title": "当前文档 .tree-doc[aria-current=page] 唯一、祖先 details 全开、节点在侧边栏可视区",
+          "status": "skip",
+          "details": [
+            "桌面专用断言（移动端由 B5 抽屉高亮覆盖）"
+          ],
+          "measured": null
+        },
+        {
+          "id": "B3",
+          "title": "home→doc→另一篇 doc：侧边栏 DOM 引用不变、scrollTop 不被重置、/api/tree ≤1 次",
+          "status": "skip",
+          "details": [
+            "桌面专用断言（移动端侧边栏隐藏）"
+          ],
+          "measured": null
+        },
+        {
+          "id": "B4",
+          "title": "/、/search、/reports 有侧边栏；/edit/ 无侧边栏（宽版）；移动端侧边栏隐藏并给「目录」按钮",
+          "status": "pass",
+          "details": [
+            "移动端首页：侧边栏 display=none width=0、目录按钮可见=true",
+            "移动端文章页：侧边栏 display=none、目录按钮可见=true",
+            "在文档页打开抽屉：当前文档高亮个数=1（期望 1，路径=doc-35）",
+            "编辑页（移动端）：侧边栏 display=none、目录按钮可见=false（契约：编辑页不给抽屉按钮）"
+          ],
+          "measured": {
+            "mobileHomeSidebarDisplay": "none",
+            "mobileDrawerBtnVisible": true,
+            "mobileDocSidebarDisplay": "none",
+            "mobileDocDrawerBtn": true,
+            "drawerCurrentCount": 1,
+            "editDrawerBtnVisible": false
+          }
+        },
+        {
+          "id": "B5",
+          "title": "抽屉：Esc/遮罩/点链接都关闭、焦点回触发按钮、无残留 no-scroll、（窄屏）",
+          "status": "pass",
+          "details": [
+            "打开：drawer=true role=dialog aria-modal=true no-scroll=true 焦点在抽屉内=true 树节点=36",
+            "Esc 关闭：drawer=false no-scroll=false 焦点回触发按钮=true（BUTTON）",
+            "点遮罩关闭：drawer=false no-scroll=false",
+            "点抽屉链接导航到 /d/doc-02/ 后自动关闭：drawer=false no-scroll=false"
+          ],
+          "measured": {
+            "drawerTreeDocs": 36
+          }
+        },
+        {
+          "id": "B6",
+          "title": "404 / 页面级错误态仍在 shell 内并保留侧边栏",
+          "status": "pass",
+          "details": [
+            "未知路由留在 shell 内：shell=true 侧边栏=true 内容子节点=1",
+            "缺失文档：shell=true 侧边栏=true 内容子节点=1 内容区文案=\"← 目录没有这篇笔记它可能已经被删除、改了名字，或者链接写错了。你可以搜一下，或从目录里找。搜索这个标题回目录＋ 新建笔\""
+          ],
+          "measured": {
+            "notfoundContentChildren": 1,
+            "missingDocText": "← 目录没有这篇笔记它可能已经被删除、改了名字，或者链接写错了。你可以搜一下，或从目录里找。搜索这个标题回目录＋ 新建笔记你可能想找doc-34案例"
+          }
+        },
+        {
+          "id": "B7",
+          "title": "目录树加载失败：侧边栏显示可重试错误，正文仍可用；重试后树恢复",
+          "status": "pass",
+          "details": [
+            "树失败时：侧边栏错误=true 重试按钮=true 正文子节点=1 整页 spinner=false",
+            "重试后：侧边栏树节点=36、正文子节点=1"
+          ],
+          "measured": {
+            "b7SidebarError": true,
+            "b7ContentChildren": 1,
+            "b7RecoveredTreeDocs": 36
+          }
+        },
+        {
+          "id": "B8",
+          "title": "同名「目录 + 笔记」合并成一行：.tree-dir-row[data-dir-path] 内同时有 a.tree-doc、.tree-dir-toggle 与可点的「N 篇」徽标（三者同 aria-controls），无重复行",
+          "status": "pass",
+          "details": [
+            "同名合并行：doc-02（行数=1）；doc-08（行数=1）；doc-16（行数=1）；doc-27（行数=1）"
+          ],
+          "measured": {
+            "b8Collisions": [
+              {
+                "path": "doc-02",
+                "occurrences": 1,
+                "ok": true
+              },
+              {
+                "path": "doc-08",
+                "occurrences": 1,
+                "ok": true
+              },
+              {
+                "path": "doc-16",
+                "occurrences": 1,
+                "ok": true
+              },
+              {
+                "path": "doc-27",
+                "occurrences": 1,
+                "ok": true
+              }
+            ]
+          }
+        },
+        {
+          "id": "C4",
+          "title": "巡览全程无 console.error / pageerror / 非预期 4xx-5xx",
+          "status": "pass",
+          "details": [
+            "console.error=0、pageerror=0、unhandledrejection=0、非预期 4xx/5xx=0"
+          ],
+          "measured": {
+            "consoleErrors": [],
+            "pageErrors": [],
+            "rejections": [],
+            "unexpectedNetwork": []
+          }
+        },
+        {
+          "id": "C5",
+          "title": "导航后焦点落在内容区；侧边栏 nav[aria-label]；抽屉 role=dialog aria-modal",
+          "status": "pass",
+          "details": [
+            "导航后焦点在 .page-content 内=true（activeElement=H1）",
+            "侧边栏存在 nav[aria-label]（移动端隐藏但仍在 DOM）",
+            "搜索页焦点在内容区=true（H1）",
+            "报告页焦点在内容区=true（H1）",
+            "抽屉内 Tab×4 后焦点仍在抽屉内=true"
+          ],
+          "measured": {
+            "docActiveElement": "H1"
+          }
+        }
+      ],
+      "summary": {
+        "pass": 13,
+        "fail": 0,
+        "skip": 3
+      },
+      "errors": {
+        "consoleErrors": [],
+        "pageErrors": [],
+        "rejections": []
+      }
+    }
+  },
+  "summary": {
+    "pass": 28,
+    "fail": 0,
+    "skip": 4,
+    "ok": true
+  },
+  "fatal": null
+}

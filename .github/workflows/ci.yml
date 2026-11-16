@@ -31,6 +31,10 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      - name: Frontend unit tests (jsdom)
+        # 路由 / 滚动恢复 / 持久布局契约（web/tests/**，见 web/vitest.config.ts）
+        run: pnpm --dir web test
+
       - name: Build web
         run: pnpm build
 

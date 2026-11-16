@@ -1,0 +1,245 @@
+/* ==========================================================================
+   持久侧边栏补丁（web-nav-sidebar 修复）
+   基础样式仍在 app.css（.sidebar / .tree-* / .tree-drawer*），这里只补新结构。
+   ========================================================================== */
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+
+.sidebar-head {
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-muted);
+}
+
+.sidebar-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 8px;
+}
+
+.sidebar-skeleton-row {
+  display: block;
+  height: 12px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--bg-soft) 0%, #eceef2 50%, var(--bg-soft) 100%);
+  background-size: 200% 100%;
+  animation: sidebar-shimmer 1.2s ease-in-out infinite;
+}
+
+.sidebar-skeleton-row:nth-child(2n) {
+  width: 72%;
+}
+
+.sidebar-skeleton-row:nth-child(3n) {
+  width: 86%;
+}
+
+@keyframes sidebar-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.sidebar-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-soft);
+}
+
+.sidebar-error-text {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
+/* 「刷新失败、仍在用旧目录」的薄提示条：横向排布，不占太多高度 */
+.sidebar-error-thin {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding: 4px 8px;
+}
+
+.sidebar-error-thin .sidebar-error-text {
+  font-size: 12px;
+}
+
+/* 抽屉里的树与侧边栏共用 tree-* 样式；只去掉侧边栏专用内边距 */
+.drawer-tree .tree-list {
+  padding-bottom: 8px;
+}
+
+/* 与 .app-body 的上内边距对齐；桌面显示「目录 / N 篇」小标题 */
+.sidebar {
+  top: calc(var(--topbar-h) + 20px);
+}
+
+@media (min-width: 861px) {
+  .sidebar-head {
+    display: flex;
+    padding: 0 8px 8px;
+  }
+}
+
+@media (max-height: 520px) {
+  .sidebar {
+    max-height: calc(100vh - var(--topbar-h) - 24px);
+  }
+}
+
+/* ---------- 「目录 + 同名笔记」合并行（可点击打开 + 可展开） ---------- */
+
+.tree-dir-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+}
+
+.tree-dir-row:hover {
+  background: var(--bg-soft);
+}
+
+.tree-dir-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tree-dir-toggle:hover {
+  background: var(--border);
+}
+
+.tree-dir-toggle .tree-caret {
+  transform: rotate(0deg);
+}
+
+.tree-dir-toggle[aria-expanded='true'] .tree-caret {
+  transform: rotate(90deg);
+}
+
+/*
+ * 移动端：合并行「展开/收起」箭头的可点击区域必须 ≥44px（与 app.css 里
+ * 「触控目标统一 ≥44px」的既有约定一致）。视觉上的箭头仍然很小，
+ * 放大的是按钮本身；不放大时只有 20×20，手指基本点不中。
+ */
+@media (max-width: 860px) {
+  .tree-dir-toggle {
+    width: 44px;
+    height: 44px;
+    /* 44px 按钮比 20px 视觉箭头宽，用负外边距把它按原位置对齐，行高不涨 */
+    margin-right: -12px;
+  }
+
+  .tree-dir-row {
+    padding-right: 2px;
+  }
+}
+
+.tree-doc-inline {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: block;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tree-dir-row .tree-count {
+  margin-left: auto;
+  flex: none;
+}
+
+/*
+ * 合并行的「N 篇」徽标本身就是展开/收起按钮（用户反馈：手习惯点那里）。
+ * 视觉保持原徽标的样式，只补按钮重置、hover/focus 与命中区。
+ */
+.tree-count-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tree-count-btn:hover {
+  background: var(--border);
+  color: var(--text);
+}
+
+.tree-count-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@media (max-width: 860px) {
+  /* 触控目标 ≥44px 的项目既有约定；徽标文字位置不变，放大的是命中区 */
+  .tree-count-btn {
+    min-height: 44px;
+    padding: 0 8px;
+  }
+}
+
+/* 普通目录行：箭头也放到右侧（与「目录+同名笔记」合并行一致） */
+.tree-dir-label > .tree-name {
+  order: 1;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.tree-dir-label > .tree-count {
+  order: 2;
+  margin-left: auto;
+}
+
+.tree-dir-label > .tree-caret {
+  order: 3;
+  margin-left: 2px;
+  text-align: center;
+}
+
+.tree-dir-row .tree-dir-toggle {
+  margin-left: 2px;
+}

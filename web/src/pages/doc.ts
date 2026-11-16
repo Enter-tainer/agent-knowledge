@@ -2,44 +2,56 @@ import { api } from '../api';
 import { NotFoundError, humanizeError } from '../api/errors';
 import type { BacklinksResponse, Doc, LinkRef, LinksResponse } from '../api/types';
 import { renderMarkdown } from '../markdown';
-import { docUrl, editUrl, navigate, replaceUrl } from '../router';
+import { currentRouteUrl, docUrl, editUrl, navigate, replaceUrl } from '../router';
 import { loadTree } from '../store';
 import { el, formatDate, parentPath, shortHash } from '../ui/dom';
 import { openNewNoteDialog } from '../ui/newNote';
-import { errorState, shell } from '../ui/shell';
+import { errorState } from '../ui/shell';
+import type { PageView } from '../ui/view';
 import { loadDoc } from './data';
 
-/** `/d/<path>`：渲染正文 + 目录 + 反链/出链面板；wikilink 用事件委托跳转。 */
-export async function renderDoc(inputPath: string): Promise<HTMLElement> {
+/**
+ * `/d/<path>`：渲染正文 + 目录 + 反链/出链面板；wikilink 用事件委托跳转。
+ *
+ * 渐进渲染（契约 §2.7 / P4）：正文（标题 / 元信息 / TOC / article / 滚动提示）先构造并返回，
+ * 「哪些笔记提到了这篇」「这篇引用的笔记」先放占位骨架，随后各自异步填充；
+ * 两个面板互不影响，失败时只重拉本面板，不整页 re-render。
+ */
+export async function renderDoc(inputPath: string): Promise<PageView> {
+  // 记住「我开始渲染时地址栏是哪一页」：下面 await 之后如果用户已经导航走了，
+  // 就不能再改地址栏（否则会把新页面的历史条目改成旧文档 URL）。
+  const startedAtUrl = currentRouteUrl();
   let doc: Doc;
   try {
     doc = await loadDoc(inputPath);
   } catch (err) {
     if (err instanceof NotFoundError) return docNotFoundPage(inputPath);
-    return shell({
+    return {
+      node: el(
+        'main',
+        { class: 'doc-page' },
+        errorState('这篇笔记加载失败', humanizeError(err), () => {
+          window.dispatchEvent(new Event('kb:navigate'));
+        }),
+      ),
       active: 'doc',
-      content: errorState('这篇笔记加载失败', humanizeError(err), () => {
-        window.dispatchEvent(new Event('kb:navigate'));
-      }),
-    });
+      title: '加载失败 · 私有知识库',
+    };
   }
 
   // wikilink 用的是短名时，把地址栏换成真实路径
-  if (doc.path !== inputPath) replaceUrl(docUrl(doc.path));
-  document.title = `${doc.title || doc.path} · 私有知识库`;
+  if (doc.path !== inputPath) replaceUrl(docUrl(doc.path), startedAtUrl);
 
   const article = el('article', { class: 'markdown-body', html: renderMarkdown(doc.raw) });
   stripDuplicateTitle(article, doc.title);
   enhanceHeadingAnchors(article);
   attachWikilinkNavigation(article);
 
-  const [backlinks, links] = await Promise.all([
-    safe(api.backlinks(doc.path)),
-    safe(api.links(doc.path)),
-  ]);
-  if (links) markUnresolved(article, links.links);
+  // 两个面板在构造时就把请求发出去（不 await），正文立即可返回
+  const backlinks = backlinksPanel(doc.path);
+  const links = linksPanel(doc.path, article);
 
-  const content = el(
+  const node = el(
     'main',
     { class: 'doc-page' },
     el(
@@ -69,31 +81,92 @@ export async function renderDoc(inputPath: string): Promise<HTMLElement> {
     ),
     buildToc(article),
     article,
-    backlinksPanel(backlinks),
-    linksPanel(links),
+    backlinks,
+    links,
   );
 
-  // 表格/代码横向滚动的「可滑动」提示需要布局后才能判断
-  window.setTimeout(() => enhanceScrollHints(article), 0);
-
-  return shell({ active: 'doc', content });
+  return {
+    node,
+    active: 'doc',
+    title: `${doc.title || doc.path} · 私有知识库`,
+    currentPath: doc.path,
+    onMount: () => {
+      // 表格/代码横向滚动的「可滑动」提示需要插入 DOM 并有布局后才能判断
+      window.setTimeout(() => enhanceScrollHints(article), 0);
+    },
+  };
 }
 
-async function safe<T>(promise: Promise<T>): Promise<T | null> {
-  try {
-    return await promise;
-  } catch {
-    return null;
+/* ------------------------------------------------------------------ */
+/* 渐进渲染面板：先占位，后填充（失败只影响本面板，可单独重试）           */
+/* ------------------------------------------------------------------ */
+
+interface PanelSpec<T> {
+  title: string;
+  titleId: string;
+  loadingText: string;
+  errorText: string;
+  load: () => Promise<T>;
+  count: (data: T) => number;
+  render: (data: T) => HTMLElement[];
+}
+
+function progressivePanel<T>(spec: PanelSpec<T>): HTMLElement {
+  // badge 用 append/remove 控制显隐（`.badge` 的 display:inline-flex 会压过 [hidden]）
+  const badge = el('span', { class: 'badge', text: '0' });
+
+  const title = el('h2', { class: 'panel-title', id: spec.titleId }, spec.title);
+  const panel = el('section', { class: 'panel', 'aria-labelledby': spec.titleId }, title);
+  panel.setAttribute('aria-busy', 'true');
+
+  /** 只替换标题之后的内容，保留 h2（CSS 里 `.doc-page > .panel > .panel-title` 仍成立）。 */
+  function setBody(children: HTMLElement[]): void {
+    for (const child of [...panel.children]) {
+      if (child !== title) child.remove();
+    }
+    panel.append(...children);
   }
+
+  let inflight = false;
+
+  async function run(): Promise<void> {
+    if (inflight) return;
+    inflight = true;
+    panel.setAttribute('aria-busy', 'true');
+    badge.remove();
+    setBody([el('p', { class: 'panel-hint', text: spec.loadingText })]);
+    try {
+      const data = await spec.load();
+      badge.textContent = String(spec.count(data));
+      title.appendChild(badge);
+      setBody(spec.render(data));
+    } catch (err) {
+      setBody([
+        el('p', { class: 'panel-hint', text: spec.errorText }),
+        el('p', { class: 'panel-hint muted', text: humanizeError(err) }),
+        el('button', {
+          type: 'button',
+          class: 'btn btn-ghost',
+          text: '重试',
+          onclick: () => void run(),
+        }),
+      ]);
+    } finally {
+      inflight = false;
+      panel.setAttribute('aria-busy', 'false');
+    }
+  }
+
+  void run();
+  return panel;
 }
 
 /** 404：不显示后端英文，给搜索/回目录/新建 + 「你可能想找」 */
-async function docNotFoundPage(inputPath: string): Promise<HTMLElement> {
+async function docNotFoundPage(inputPath: string): Promise<PageView> {
   const asked = inputPath.split('/').pop() ?? inputPath;
   const suggestions = await similarDocs(inputPath);
-  document.title = '没有这篇笔记 · 私有知识库';
 
-  const content = el(
+  const node = el(
     'main',
     { class: 'doc-page' },
     el('div', { class: 'doc-toolbar' }, el('a', { class: 'back-link', href: '/', text: '← 目录' })),
@@ -136,7 +209,7 @@ async function docNotFoundPage(inputPath: string): Promise<HTMLElement> {
     ),
   );
 
-  return shell({ active: 'doc', content });
+  return { node, active: 'doc', title: '没有这篇笔记 · 私有知识库' };
 }
 
 interface SimilarDoc {
@@ -192,7 +265,13 @@ function enhanceHeadingAnchors(article: HTMLElement): void {
     anchor.addEventListener('click', (event) => {
       event.preventDefault();
       const url = `${location.origin}${location.pathname}#${encodeURIComponent(id)}`;
-      history.replaceState(null, '', `#${id}`);
+      // 保留 history.state：滚动恢复靠 state 里的 kbKey 记账，写成 null 会让该条目
+      // 之后后退时找不到自己的滚动位置（落回顶部）。
+      try {
+        history.replaceState({ ...(history.state ?? {}) }, '', `#${id}`);
+      } catch {
+        /* 某些环境不允许，忽略：至少滚动和复制仍然有效 */
+      }
       void navigator.clipboard?.writeText(url).then(
         () => {
           anchor.classList.add('is-copied');
@@ -300,89 +379,81 @@ function enhanceScrollHints(article: HTMLElement): void {
   }
 }
 
-function backlinksPanel(data: BacklinksResponse | null): HTMLElement {
-  const panel = el('section', { class: 'panel', 'aria-labelledby': 'backlinks-title' });
-  const items = data?.backlinks ?? [];
-  panel.appendChild(
-    el(
-      'h2',
-      { class: 'panel-title', id: 'backlinks-title' },
-      '哪些笔记提到了这篇',
-      el('span', { class: 'badge', text: String(items.length) }),
-    ),
-  );
-
-  if (!data) {
-    panel.appendChild(el('p', { class: 'panel-hint', text: '反链暂时加载失败，刷新页面可重试。' }));
-    return panel;
-  }
-  if (items.length === 0) {
-    panel.appendChild(el('p', { class: 'panel-hint', text: '还没有别的笔记提到这篇。' }));
-    return panel;
-  }
-
-  const list = el('ul', { class: 'link-list' });
-  for (const item of items) {
-    list.appendChild(
-      el(
-        'li',
-        { class: 'link-item' },
-        el('a', { class: 'link-title', href: docUrl(item.path), text: item.title || item.path }),
-        el('span', { class: 'mention-count', text: `提到 ${item.count} 次` }),
-        el('span', { class: 'link-path muted', text: parentPath(item.path) }),
-      ),
-    );
-  }
-  panel.appendChild(list);
-  return panel;
+/** 反链面板：占位 → 填充；失败只重拉反链。 */
+function backlinksPanel(path: string): HTMLElement {
+  return progressivePanel<BacklinksResponse>({
+    title: '哪些笔记提到了这篇',
+    titleId: 'backlinks-title',
+    loadingText: '正在加载…',
+    errorText: '反链暂时加载失败。',
+    load: () => api.backlinks(path),
+    count: (data) => data.backlinks?.length ?? 0,
+    render: (data) => {
+      const items = data.backlinks ?? [];
+      if (items.length === 0) {
+        return [el('p', { class: 'panel-hint', text: '还没有别的笔记提到这篇。' })];
+      }
+      const list = el('ul', { class: 'link-list' });
+      for (const item of items) {
+        list.appendChild(
+          el(
+            'li',
+            { class: 'link-item' },
+            el('a', { class: 'link-title', href: docUrl(item.path), text: item.title || item.path }),
+            el('span', { class: 'mention-count', text: `提到 ${item.count} 次` }),
+            el('span', { class: 'link-path muted', text: parentPath(item.path) }),
+          ),
+        );
+      }
+      return [list];
+    },
+  });
 }
 
-function linksPanel(data: LinksResponse | null): HTMLElement {
-  const panel = el('section', { class: 'panel', 'aria-labelledby': 'links-title' });
-  const items = data?.links ?? [];
-  panel.appendChild(
-    el(
-      'h2',
-      { class: 'panel-title', id: 'links-title' },
-      '这篇引用的笔记',
-      el('span', { class: 'badge', text: String(items.length) }),
-    ),
-  );
-
-  if (!data) {
-    panel.appendChild(el('p', { class: 'panel-hint', text: '引用列表暂时加载失败，刷新页面可重试。' }));
-    return panel;
-  }
-  if (items.length === 0) {
-    panel.appendChild(el('p', { class: 'panel-hint', text: '这篇没有引用别的笔记。' }));
-    return panel;
-  }
-
-  const list = el('ul', { class: 'link-list' });
-  for (const link of items) {
-    if (!link.resolved || !link.dstPath) {
-      list.appendChild(
-        el(
-          'li',
-          { class: 'link-item' },
-          el('span', { class: 'link-broken', text: link.target }),
-          el('span', { class: 'badge badge-warn', text: '链接目标不存在' }),
-        ),
-      );
-      continue;
-    }
-    list.appendChild(
-      el(
-        'li',
-        { class: 'link-item' },
-        el('a', {
-          class: 'link-title',
-          href: docUrl(link.dstPath),
-          text: link.target,
-        }),
-      ),
-    );
-  }
-  panel.appendChild(list);
-  return panel;
+/** 出链面板：占位 → 填充；顺带把正文里的断链 wikilink 标出来（失败只重拉出链）。 */
+function linksPanel(path: string, article: HTMLElement): HTMLElement {
+  return progressivePanel<LinksResponse>({
+    title: '这篇引用的笔记',
+    titleId: 'links-title',
+    loadingText: '正在加载…',
+    errorText: '引用列表暂时加载失败。',
+    load: async () => {
+      const data = await api.links(path);
+      markUnresolved(article, data.links ?? []);
+      return data;
+    },
+    count: (data) => data.links?.length ?? 0,
+    render: (data) => {
+      const items = data.links ?? [];
+      if (items.length === 0) {
+        return [el('p', { class: 'panel-hint', text: '这篇没有引用别的笔记。' })];
+      }
+      const list = el('ul', { class: 'link-list' });
+      for (const link of items) {
+        if (!link.resolved || !link.dstPath) {
+          list.appendChild(
+            el(
+              'li',
+              { class: 'link-item' },
+              el('span', { class: 'link-broken', text: link.target }),
+              el('span', { class: 'badge badge-warn', text: '链接目标不存在' }),
+            ),
+          );
+          continue;
+        }
+        list.appendChild(
+          el(
+            'li',
+            { class: 'link-item' },
+            el('a', {
+              class: 'link-title',
+              href: docUrl(link.dstPath),
+              text: link.target,
+            }),
+          ),
+        );
+      }
+      return [list];
+    },
+  });
 }

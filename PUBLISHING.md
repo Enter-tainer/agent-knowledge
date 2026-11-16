@@ -8,6 +8,11 @@
 `research/bench/README.md` 与 `research/poc/` 的示例也已去标识。
 `node scripts/check-private.mjs` 现在退出码为 0。
 
+> 2026-11-15 补充（Web 前端重做分支 `fix/web-spa-nav-sidebar`）：端到端验收证据天然携带真实笔记路径/标题，
+> 因此新增 `node scripts/redact-evidence.mjs` —— 用本地 `vault-src/` 的目录结构推导映射，把证据里的路径/标题
+> 换成 `dir-NN`/`doc-NN` 后再提交（`docs/evidence/*.json` 均已 pseudonym 化）。原始报告写在
+> `web/e2e/reports/`（ignored，且 `check-private` 跳过该目录）。提交前仍必须跑 `node scripts/check-private.mjs` 并确保退出码 0。
+
 ## 1. 默认不提交（已在 .gitignore）
 
 | 路径 | 内容 | 处理 |
@@ -16,7 +21,7 @@
 | `reviews/` | review 报告 + 81 张截图（12.6MB，含笔记标题/正文/命令表） | 不提交（内部审计） |
 | `research/corpus/` | 真实笔记路径、外链（含个人 gist、飞书 wiki token） | 不提交 |
 | `research/bench/results.json` | 2185 处真实笔记路径 + 本机绝对路径 | 不提交（可本地重跑生成） |
-| `.wrangler/`、`.auth/`、`web/dist/`、`web/.scratch/`、`.reviews-tmp/`、`backups/` | 本地状态/产物 | 不提交 |
+| `.wrangler/`、`.auth/`、`web/dist/`、`web/.scratch/`、`.reviews-tmp/`、`backups/`、`web/e2e/reports/` | 本地状态/产物 | 不提交 |
 
 > 这些文件仍在你本地，只是不会进 git。想公开 `research/` 或 `reviews/` 正文的话，先把路径/标题 pseudonym 化、外链替换成 `<external-url>`，再用合成数据重拍截图。
 
