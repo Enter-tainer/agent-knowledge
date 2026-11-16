@@ -160,6 +160,7 @@ $KB put '_scratch/smoke' /tmp/smoke.md && $KB del '_scratch/smoke'
 
 ```bash
 kb-fuse status                     # 看挂载点、缓存目录、token 状态与 needs-login 标记
+kb-fuse prefetch [--concurrency N] # 预热全库缓存（冷启动后先跑一次，否则首轮 rg 会逐篇冷取）
 kb-fuse login                      # 重新登录（支持贴回 callback URL）
 kb-fuse unmount                    # 卸载（fusermount3 -u）
 
@@ -167,3 +168,8 @@ kb-fuse unmount                    # 卸载（fusermount3 -u）
 systemctl --user status kb-fuse
 journalctl --user -u kb-fuse -f
 ```
+
+构建前置：`fuser` 默认链路走 pkg-config 找 **libfuse3-dev**（提供 `fuse3.pc`），没装会 `Package 'fuse' ... not found` 直接编译失败；`fusermount3` 在运行时也要有（`fuse3` 包）。`EnvironmentFile` 里 `AGENT_OAUTH_FILE` 必须写绝对路径（systemd 不展开 `$HOME`/`~`），否则会落到 unit 的 CWD 下找不到 token。
+
+实测（本机到 Cloudflare edge 抖动大，约 1/3 请求超时/被 reset）：`prefetch` 全库 42 篇约 2 分钟（6 并发）；缓存预热后 `rg` 扫全库 ~10ms，单篇热读 ~0ms；冷读单篇最差 20~25s。所以**装完先 prefetch，别一上来就 rg**。
+

@@ -65,6 +65,14 @@ pub enum DocFetch {
     Modified { doc: DocFull, etag: String },
 }
 
+/// Fully-read GET response. The body is consumed inside the retry loop so
+/// mid-body connection resets are retried instead of surfacing immediately.
+pub struct ApiResponse {
+    pub status: StatusCode,
+    pub etag: Option<String>,
+    pub body: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ApiError {
     #[error("NeedsLogin: {0}")]
@@ -105,21 +113,17 @@ impl KbApiClient {
 
     pub async fn fetch_tree(&self) -> Result<Vec<DocSummary>, ApiError> {
         let url = format!("{}/api/tree?limit=2000", self.config.base_url);
-        let resp = self.send_authed(Method::GET, &url, None).await?;
-        let status = resp.status();
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| ApiError::Transient(format!("read /api/tree body failed: {e}")))?;
+        let resp = self.get_text(&url, None).await?;
+        let status = resp.status;
 
         if !status.is_success() {
             return Err(ApiError::Transient(format!(
                 "GET /api/tree returned HTTP {status}: {}",
-                truncate(&body, 200)
+                truncate(&resp.body, 200)
             )));
         }
 
-        let docs: Vec<DocSummary> = serde_json::from_str(&body)
+        let docs: Vec<DocSummary> = serde_json::from_str(&resp.body)
             .map_err(|e| ApiError::Transient(format!("parse /api/tree JSON failed: {e}")))?;
         if docs.len() >= 2000 {
             warn!(
@@ -132,19 +136,15 @@ impl KbApiClient {
 
     pub async fn fetch_health(&self) -> Result<HealthStatus, ApiError> {
         let url = format!("{}/api/health", self.config.base_url);
-        let resp = self.send_authed(Method::GET, &url, None).await?;
-        let status = resp.status();
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| ApiError::Transient(format!("read /api/health body failed: {e}")))?;
-        if !status.is_success() {
+        let resp = self.get_text(&url, None).await?;
+        if !resp.status.is_success() {
             return Err(ApiError::Transient(format!(
-                "GET /api/health returned HTTP {status}: {}",
-                truncate(&body, 200)
+                "GET /api/health returned HTTP {}: {}",
+                resp.status,
+                truncate(&resp.body, 200)
             )));
         }
-        serde_json::from_str(&body)
+        serde_json::from_str(&resp.body)
             .map_err(|e| ApiError::Transient(format!("parse /api/health JSON failed: {e}")))
     }
 
@@ -155,45 +155,35 @@ impl KbApiClient {
     ) -> Result<DocFetch, ApiError> {
         let encoded = Self::encode_doc_path(doc_path);
         let url = format!("{}/api/docs/{encoded}", self.config.base_url);
-        let resp = self.send_authed(Method::GET, &url, if_none_match).await?;
-        let status = resp.status();
-        let header_etag = resp
-            .headers()
-            .get("etag")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty());
+        let resp = self.get_text(&url, if_none_match).await?;
 
-        if status == StatusCode::NOT_MODIFIED {
-            return Ok(DocFetch::NotModified { etag: header_etag });
+        if resp.status == StatusCode::NOT_MODIFIED {
+            return Ok(DocFetch::NotModified { etag: resp.etag });
         }
-        if status == StatusCode::NOT_FOUND {
+        if resp.status == StatusCode::NOT_FOUND {
             return Err(ApiError::NotFound(doc_path.to_string()));
         }
-
-        let body = resp
-            .text()
-            .await
-            .map_err(|e| ApiError::Transient(format!("read /api/docs body failed: {e}")))?;
-        if !status.is_success() {
+        if !resp.status.is_success() {
             return Err(ApiError::Transient(format!(
-                "GET /api/docs/{doc_path} returned HTTP {status}: {}",
-                truncate(&body, 200)
+                "GET /api/docs/{doc_path} returned HTTP {}: {}",
+                resp.status,
+                truncate(&resp.body, 200)
             )));
         }
 
-        let doc: DocFull = serde_json::from_str(&body)
+        let doc: DocFull = serde_json::from_str(&resp.body)
             .map_err(|e| ApiError::Transient(format!("parse /api/docs JSON failed: {e}")))?;
-        let etag = header_etag.unwrap_or_else(|| format!("\"{}\"", doc.hash));
+        let etag = resp.etag.unwrap_or_else(|| format!("\"{}\"", doc.hash));
         Ok(DocFetch::Modified { doc, etag })
     }
 
-    async fn send_authed(
-        &self,
-        method: Method,
-        url: &str,
-        if_none_match: Option<&str>,
-    ) -> Result<reqwest::Response, ApiError> {
+    /// Performs a GET and reads the whole body inside the retry loop.
+    ///
+    /// Cloudflare edge connections from this host routinely reset mid-body, so a
+    /// retry that only wraps `send()` would surface those as hard `Transient`
+    /// errors (EIO on a cold FUSE read). Body read errors and retryable statuses
+    /// both consume an attempt.
+    async fn get_text(&self, url: &str, if_none_match: Option<&str>) -> Result<ApiResponse, ApiError> {
         let cred = self.auth.get_credential().await?;
         let mut token_opt = match cred {
             AuthCredential::None => None,
@@ -203,9 +193,13 @@ impl KbApiClient {
 
         let mut last_err = String::new();
         for attempt in 0..self.config.http_attempts {
+            if attempt > 0 {
+                tokio::time::sleep(retry_backoff(attempt - 1)).await;
+            }
+
             let mut req = self
                 .client
-                .request(method.clone(), url)
+                .request(Method::GET, url)
                 .header("accept", "application/json");
             if let Some(ref tok) = token_opt {
                 req = req.bearer_auth(tok);
@@ -214,43 +208,61 @@ impl KbApiClient {
                 req = req.header("if-none-match", etag);
             }
 
-            match req.send().await {
-                Ok(resp) => {
-                    let status = resp.status();
-                    if status == StatusCode::UNAUTHORIZED {
-                        if !refreshed_after_401 {
-                            if let Some(used) = token_opt.take() {
-                                refreshed_after_401 = true;
-                                let fresh = self.auth.refresh_after_401(&used).await?;
-                                token_opt = Some(fresh);
-                                continue;
-                            }
-                        }
-                        let msg = format!("HTTP 401 from {url} even after token refresh");
-                        self.auth.mark_needs_login(&msg).await;
-                        return Err(ApiError::NeedsLogin(msg));
-                    }
-                    if status.is_redirection() && status != StatusCode::NOT_MODIFIED {
-                        let msg = format!(
-                            "HTTP {status} redirect from {url} (Access login required or Managed OAuth disabled)"
-                        );
-                        self.auth.mark_needs_login(&msg).await;
-                        return Err(ApiError::NeedsLogin(msg));
-                    }
-                    if is_retryable_status(status) && attempt + 1 < self.config.http_attempts {
-                        last_err = format!("HTTP {status}");
-                        tokio::time::sleep(retry_backoff(attempt)).await;
-                        continue;
-                    }
-                    return Ok(resp);
-                }
+            let resp = match req.send().await {
+                Ok(resp) => resp,
                 Err(err) => {
                     last_err = err.to_string();
+                    continue;
                 }
+            };
+
+            let status = resp.status();
+            let etag = resp
+                .headers()
+                .get("etag")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty());
+
+            if status == StatusCode::UNAUTHORIZED {
+                if !refreshed_after_401 {
+                    if let Some(used) = token_opt.take() {
+                        refreshed_after_401 = true;
+                        let fresh = self.auth.refresh_after_401(&used).await?;
+                        token_opt = Some(fresh);
+                        continue;
+                    }
+                }
+                let msg = format!("HTTP 401 from {url} even after token refresh");
+                self.auth.mark_needs_login(&msg).await;
+                return Err(ApiError::NeedsLogin(msg));
             }
-            if attempt + 1 < self.config.http_attempts {
-                tokio::time::sleep(retry_backoff(attempt)).await;
+            if status.is_redirection() && status != StatusCode::NOT_MODIFIED {
+                let msg = format!(
+                    "HTTP {status} redirect from {url} (Access login required or Managed OAuth disabled)"
+                );
+                self.auth.mark_needs_login(&msg).await;
+                return Err(ApiError::NeedsLogin(msg));
             }
+
+            let body = if status == StatusCode::NOT_MODIFIED {
+                String::new()
+            } else {
+                match resp.text().await {
+                    Ok(body) => body,
+                    Err(err) => {
+                        last_err = format!("read body for {url} failed: {err}");
+                        continue;
+                    }
+                }
+            };
+
+            if is_retryable_status(status) {
+                last_err = format!("HTTP {status} from {url}");
+                continue;
+            }
+
+            return Ok(ApiResponse { status, etag, body });
         }
 
         Err(ApiError::Transient(format!(

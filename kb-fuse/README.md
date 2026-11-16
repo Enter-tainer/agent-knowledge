@@ -18,9 +18,16 @@ Read-only FUSE filesystem with Stale-While-Revalidate (SWR) disk caching for `ag
 ## Build & Install (Linux)
 
 ```bash
+# Build deps: libfuse3-dev (fuse3.pc for fuser's pkg-config probe) + fusermount3 at runtime
 cd kb-fuse
 cargo build --release
 install -Dm755 target/release/kb-fuse ~/.local/bin/kb-fuse
+```
+
+Warm the cache once after installing (otherwise the first `rg`/`grep` pass pays every cold fetch):
+
+```bash
+kb-fuse prefetch --concurrency 6
 ```
 
 ## systemd --user Setup

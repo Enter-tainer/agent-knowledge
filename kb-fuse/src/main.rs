@@ -60,6 +60,12 @@ enum Commands {
         #[arg(long, env = "KB_MOUNT_POINT")]
         mountpoint: Option<PathBuf>,
     },
+    /// Warm the SWR disk cache for every document in the tree (run before rg/grep first pass)
+    Prefetch {
+        /// Parallel in-flight fetches (defaults to KB_MAX_CONCURRENT_FETCH)
+        #[arg(long)]
+        concurrency: Option<usize>,
+    },
 }
 
 #[tokio::main]
@@ -105,7 +111,88 @@ async fn main() -> anyhow::Result<()> {
                 anyhow::bail!("FUSE mount/unmount is only supported on Unix (Linux / macOS / WSL2)");
             }
         }
+        Commands::Prefetch { concurrency } => {
+            let mut config =
+                Config::from_env_and_overrides(cli.base, None, cli.cache_dir, cli.token_file)?;
+            if let Some(n) = concurrency {
+                config.max_concurrent_fetch = n.max(1);
+            }
+            run_prefetch(config).await
+        }
     }
+}
+
+/// Warms the on-disk SWR cache for every doc in `/api/tree` so that the first
+/// `rg -r` / `grep` pass over the mount does not block on 40+ cold fetches.
+async fn run_prefetch(config: Config) -> anyhow::Result<()> {
+    let client = build_http_client(&config)?;
+    let auth = Arc::new(AuthManager::new(config.clone(), client.clone()));
+    let api = Arc::new(KbApiClient::new(config.clone(), client, auth.clone()));
+    let cache = Arc::new(SwrCache::new(config.clone(), api, auth.clone())?);
+
+    let docs = match cache.refresh_tree_and_health().await {
+        Some(docs) => docs,
+        None => {
+            let cached = cache
+                .load_cached_tree()
+                .ok_or_else(|| anyhow::anyhow!("no tree available: upstream fetch failed and no cached tree"))?;
+            cached.docs
+        }
+    };
+    let paths: Vec<String> = docs.iter().map(|d| d.path.clone()).collect();
+    info!(
+        "prefetching {} documents (concurrency {})",
+        paths.len(),
+        config.max_concurrent_fetch
+    );
+
+    let total = paths.len();
+    let results = Arc::new(tokio::sync::Mutex::new((0usize, Vec::<String>::new())));
+    let parallel = config.max_concurrent_fetch.max(1);
+    let mut next = 0usize;
+
+    while next < paths.len() {
+        let mut handles = Vec::new();
+        for _ in 0..parallel.min(paths.len() - next) {
+            let path = paths[next].clone();
+            next += 1;
+            let cache = cache.clone();
+            let auth = auth.clone();
+            let results = results.clone();
+            handles.push(tokio::spawn(async move {
+                if auth.is_needs_login() {
+                    return;
+                }
+                match cache.get_doc_swr(&path, None).await {
+                    Ok(_) => results.lock().await.0 += 1,
+                    Err(err) => results.lock().await.1.push(format!("{path}: {err}")),
+                }
+            }));
+        }
+        for handle in handles {
+            let _ = handle.await;
+        }
+    }
+
+    let (ok, failed) = {
+        let guard = results.lock().await;
+        (guard.0, guard.1.clone())
+    };
+    for line in &failed {
+        warn!("prefetch failed: {line}");
+    }
+    println!(
+        "prefetched {ok}/{total} documents into {} ({} failed)",
+        config.cache_dir.display(),
+        failed.len()
+    );
+    if auth.is_needs_login() {
+        anyhow::bail!(
+            "NeedsLogin: run `kb-fuse login` (marker: {})",
+            config.needs_login_file.display()
+        );
+    }
+    Ok(())
 }
 
 async fn run_mount(config: Config) -> anyhow::Result<()> {
