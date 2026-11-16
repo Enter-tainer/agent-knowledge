@@ -1,0 +1,17 @@
+[Unit]
+Description=kb.mgt.moe read-only FUSE filesystem (SWR cache)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+EnvironmentFile=%E/kb-fuse/env
+ExecStartPre=/bin/sh -c 'mkdir -p "$KB_MOUNT_POINT" "$KB_CACHE_DIR" && (fusermount3 -u "$KB_MOUNT_POINT" 2>/dev/null || true)'
+ExecStart=%h/.local/bin/kb-fuse mount
+ExecStop=/bin/sh -c 'fusermount3 -u "$KB_MOUNT_POINT" 2>/dev/null || true'
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=15s
+
+[Install]
+WantedBy=default.target

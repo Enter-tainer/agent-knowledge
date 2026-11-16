@@ -1,10 +1,10 @@
 ---
 name: agent-knowledge
-description: "Use when reading or writing an agent-knowledge md KB (Cloudflare Access)."
-version: 1.0.1
+description: "Use when reading or writing an agent-knowledge md KB (Cloudflare Access), or using the kb-fuse read-only FUSE mount."
+version: 1.1.0
 license: MIT
 metadata:
-  tags: [knowledge-base, cloudflare, d1, oauth]
+  tags: [knowledge-base, cloudflare, d1, oauth, fuse]
 ---
 
 # agent-knowledge — 给 agent 的接入 skill
@@ -14,9 +14,9 @@ metadata:
 
 ## When to Use
 
-- 要在知识库里查东西（按关键词检索、读某篇、列目录、查反链/断链）
-- 要往知识库写东西（新建一篇、改一篇、改文件名并全库改写引用、删除）
-- 排查「agent 连不上知识库」这类问题（401 / 302 / 428 / 412）
+- 要在知识库里查东西（按关键词检索、读某篇、列目录、查反链/断链；若已挂载 `kb-fuse`，可直接本地 `rg` / `grep` / 读 `.md`）
+- 要往知识库写东西（新建一篇、改一篇、改文件名并全库改写引用、删除；`kb-fuse` 当前只读，写入仍走 `kb.mjs` / `PUT`）
+- 排查「agent 连不上知识库」或 `kb-fuse` 进入 `NeedsLogin`（401 / 302 / 428 / 412 / `~/.cache/kb-fuse/needs-login`）
 
 ## 0. 先探测，别猜
 
@@ -144,3 +144,26 @@ $KB put '_scratch/smoke' /tmp/smoke.md && $KB del '_scratch/smoke'
 ```
 
 写完记得清理：`_scratch/` 下的自检文档应当删掉，别留在生产库里。
+
+## 6. 本地只读 FUSE 挂载（`kb-fuse`，Linux / WSL2）
+
+仓库根目录 `kb-fuse/` 提供 Rust 实现的只读 FUSE 挂载，把 `/api/tree` + `/api/docs/{path}` 暴露成普通 `.md` 目录（直接跑 `rg` / `grep` / `git` / 编辑器），避免每次读都打 Cloudflare edge：
+
+- **SWR 缓存**：冷缓存首次 `open` 阻塞回源一次；热/过期缓存 `read()` 立即返回本地磁盘副本，后台异步带 `If-None-Match` 回源（`304` 只刷 mtime，`200` 原子替换正文与 ETag）；`/api/health` 返回 `stale != 0` 时日志会提示 `POST /api/admin/reindex`。
+- **只读范围（v1）**：仅支持只读挂载（写入返回 `EROFS`）；写入/重命名/删除请用第 2 节 `kb.mjs`。
+- **鉴权与 `NeedsLogin`**：
+  - 复用 `oauth.json`（`AGENT_OAUTH_FILE` / 标准数据目录，`0600`），access 快过期或遇 `401` 时自动 `refresh_token` 续期。
+  - refresh 彻底失效时**不崩溃、不重启循环**——继续提供本地缓存视图，暂停后台回源，写入 `~/.cache/kb-fuse/needs-login`（或 `$KB_NEEDS_LOGIN_FILE`）并更新 `sd_notify` 状态。
+  - 恢复登录：执行 `kb-fuse login`（内部走 `agent-oauth.mjs login --no-open`，支持直接把 `http://localhost:8400/callback?code=...&state=...` 贴回 stdin 或 `curl`），守护进程自动检测 `oauth.json` 更新并恢复回源，**无需重启 systemd unit**。
+
+常用命令与 `systemd --user`：
+
+```bash
+kb-fuse status                     # 看挂载点、缓存目录、token 状态与 needs-login 标记
+kb-fuse login                      # 重新登录（支持贴回 callback URL）
+kb-fuse unmount                    # 卸载（fusermount3 -u）
+
+# systemd --user 部署参考 kb-fuse/systemd/kb-fuse.service 与 kb-fuse/systemd/kb-fuse.env.example
+systemctl --user status kb-fuse
+journalctl --user -u kb-fuse -f
+```

@@ -8,6 +8,7 @@ node_modules/
 .wrangler-dry/
 dist/
 web/dist/
+kb-fuse/target/
 .scratch/
 *.db
 *.db-journal
