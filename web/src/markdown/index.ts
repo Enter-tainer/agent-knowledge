@@ -1,6 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import { calloutPlugin } from './callout';
 import { escapeHtml, hasLanguage, highlightCode, normalizeLanguage } from './highlight';
+import { mathPlugin } from './math';
 import { wikilinkPlugin } from './wikilink';
 
 /**
@@ -19,6 +20,7 @@ const md = new MarkdownIt({
 
 md.use(wikilinkPlugin);
 md.use(calloutPlugin);
+md.use(mathPlugin);
 
 /** 标题 slug：保留中英文/数字，其余转 `-`；重复标题自动加 `-2`。 */
 function slugifyHeading(text: string): string {
@@ -114,10 +116,10 @@ const PUNCT_OR_SYMBOL_RE = /[\p{P}\p{S}]/u;
 const ZWSP = '\u200B';
 
 function fixBoldFlanking(line: string): string {
-  // 先按行内代码切开，避免把 ZWSP 插进 `code` 里
-  return splitByInlineCode(line)
+  // 先按行内代码与数学公式切开，避免把 ZWSP 插进 `code` 或 `$math$` 里
+  return splitByProtectedSpans(line)
     .map((part) => {
-      if (part.code) return part.text;
+      if (part.protected) return part.text;
       return part.text.replace(BOLD_RE, (match, inner: string, offset: number, whole: string) => {
         if (!inner) return match;
         const last = inner[inner.length - 1];
@@ -134,14 +136,20 @@ function fixBoldFlanking(line: string): string {
 }
 
 interface InlinePart {
-  code: boolean;
+  protected: boolean;
   text: string;
 }
 
-function splitByInlineCode(line: string): InlinePart[] {
+function splitByProtectedSpans(line: string): InlinePart[] {
   const parts: InlinePart[] = [];
   let buffer = '';
   let i = 0;
+  const flush = (): void => {
+    if (buffer) {
+      parts.push({ protected: false, text: buffer });
+      buffer = '';
+    }
+  };
   while (i < line.length) {
     if (line[i] === '`') {
       let run = 1;
@@ -153,33 +161,42 @@ function splitByInlineCode(line: string): InlinePart[] {
         i += run;
         continue;
       }
-      if (buffer) {
-        parts.push({ code: false, text: buffer });
-        buffer = '';
-      }
-      parts.push({ code: true, text: line.slice(i, close + run) });
+      flush();
+      parts.push({ protected: true, text: line.slice(i, close + run) });
       i = close + run;
       continue;
+    }
+    if (line[i] === '$' && (i === 0 || line[i - 1] !== '\\')) {
+      const isDouble = line[i + 1] === '$';
+      const marker = isDouble ? '$$' : '$';
+      const close = line.indexOf(marker, i + marker.length);
+      if (close !== -1) {
+        flush();
+        parts.push({ protected: true, text: line.slice(i, close + marker.length) });
+        i = close + marker.length;
+        continue;
+      }
     }
     buffer += line[i];
     i++;
   }
-  if (buffer) parts.push({ code: false, text: buffer });
+  flush();
   return parts;
 }
 
 /**
- * 渲染前预处理（都在围栏代码块之外进行）：
+ * 渲染前预处理（都在围栏代码块与多行块级公式之外进行）：
  * 1. 表格单元格里的 `<br>` → 空格（html:false 下否则会显示成字面量 `<br>`）；
  * 2. 中文标点后的 `**` 闭合补齐 flanking（见 fixBoldFlanking）。
  */
 export function preprocess(raw: string): string {
   const lines = raw.split('\n');
   let fence: string | null = null;
+  let inMathBlock = false;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const m = FENCE_LINE_RE.exec(line);
-    if (m) {
+    if (m && !inMathBlock) {
       const marker = m[1];
       if (!fence) {
         fence = marker;
@@ -191,6 +208,22 @@ export function preprocess(raw: string): string {
       }
     }
     if (fence) continue;
+
+    const trimmed = line.trim();
+    if (!inMathBlock && (trimmed.startsWith('$$') || trimmed.startsWith('\\['))) {
+      const closeMark = trimmed.startsWith('$$') ? '$$' : '\\]';
+      const firstClose = trimmed.lastIndexOf(closeMark);
+      if (firstClose < (trimmed.startsWith('$$') ? 2 : 2)) {
+        inMathBlock = true;
+      }
+      continue;
+    }
+    if (inMathBlock) {
+      if (trimmed.endsWith('$$') || trimmed.endsWith('\\]')) {
+        inMathBlock = false;
+      }
+      continue;
+    }
 
     let next = line;
     if (next.includes('<br')) next = next.replace(/<br\s*\/?>/gi, ' ');

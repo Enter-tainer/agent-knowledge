@@ -40,6 +40,30 @@ export interface RenameResult {
   from: string;
   to: string;
   rewritten: number;
+  unresolved?: number;
+  alreadyRenamed?: boolean;
+}
+
+export interface DeleteResult {
+  path: string;
+}
+
+export interface ResolveLinksResult {
+  total: number;
+  unresolved: number;
+}
+
+export interface StaleDocEntry {
+  path: string;
+  title: string;
+  updated: string;
+  hash: string;
+  indexedHash: string | null;
+}
+
+export interface StaleReport {
+  stale: StaleDocEntry[];
+  count: number;
 }
 
 export interface SearchHit {

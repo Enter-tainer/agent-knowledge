@@ -15,15 +15,25 @@ export interface DrawerUiOptions {
   title: string;
   /** 标题右侧的计数，如「36 篇」。 */
   count?: string;
+  /** 标题栏右侧、关闭按钮左侧的扩展操作。 */
+  headerActions?: HTMLElement | null;
   body: HTMLElement;
+  /** 抽屉底部操作栏。 */
+  footer?: HTMLElement | null;
   /** 打开抽屉的触发元素：关闭时把焦点还给它。 */
   trigger?: HTMLElement | null;
 }
 
 export interface DrawerController {
   readonly element: HTMLElement;
+  setCount(count: string): void;
   close(): void;
 }
+
+const ICON_FOLDER_TREE =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>';
+const ICON_CLOSE =
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
 
 let active: DrawerController | null = null;
 
@@ -35,13 +45,31 @@ export function openDrawerUi(options: DrawerUiOptions): DrawerController {
     options.trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
   let closed = false;
 
-  const closeBtn = el('button', {
-    type: 'button',
-    class: 'btn btn-ghost',
-    text: '关闭',
-    'aria-label': '关闭目录',
-    onclick: () => close(),
-  });
+  const titleIcon = el('span', { class: 'tree-drawer-icon', 'aria-hidden': 'true' });
+  titleIcon.innerHTML = ICON_FOLDER_TREE;
+
+  const countEl = el('span', { class: 'tree-drawer-count', text: options.count ?? '' });
+  if (!options.count) countEl.hidden = true;
+
+  const closeIcon = el('span', { 'aria-hidden': 'true' });
+  closeIcon.innerHTML = ICON_CLOSE;
+
+  const closeBtn = el(
+    'button',
+    {
+      type: 'button',
+      class: 'btn-icon tree-drawer-close',
+      title: '关闭目录',
+      'aria-label': '关闭目录',
+      onclick: () => close(),
+    },
+    closeIcon,
+    el('span', { class: 'sr-only', text: '关闭' }),
+  );
+
+  const headActions = el('div', { class: 'tree-drawer-actions' });
+  if (options.headerActions) headActions.appendChild(options.headerActions);
+  headActions.appendChild(closeBtn);
 
   const panel = el(
     'div',
@@ -52,12 +80,14 @@ export function openDrawerUi(options: DrawerUiOptions): DrawerController {
       el(
         'div',
         { class: 'tree-drawer-title' },
+        titleIcon,
         el('span', { text: options.title }),
-        options.count ? el('span', { class: 'muted', text: options.count }) : null,
+        countEl,
       ),
-      closeBtn,
+      headActions,
     ),
     el('div', { class: 'tree-drawer-body' }, options.body),
+    options.footer ?? null,
   );
   const overlay = el('div', { class: 'tree-drawer-overlay', role: 'presentation' }, panel);
 
@@ -131,7 +161,14 @@ export function openDrawerUi(options: DrawerUiOptions): DrawerController {
   document.body.appendChild(overlay);
   closeBtn.focus();
 
-  const controller: DrawerController = { element: overlay, close };
+  const controller: DrawerController = {
+    element: overlay,
+    setCount: (count: string) => {
+      countEl.textContent = count;
+      countEl.hidden = count.length === 0;
+    },
+    close,
+  };
   active = controller;
   return controller;
 }

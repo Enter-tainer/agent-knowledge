@@ -135,7 +135,7 @@ describe('renderTree：合并行 DOM 契约（B8）', () => {
     return row;
   }
 
-  it('同名路径只有一个文档链接（可点击打开），且箭头在行尾', () => {
+  it('同名路径只有一个文档链接（可点击打开），左侧为展开箭头，右侧为计数与新建入口', () => {
     const root = renderTree(tree);
     const links = root.querySelectorAll<HTMLAnchorElement>('a.tree-doc[data-doc-path="示例库"]');
     expect(links).toHaveLength(1);
@@ -145,67 +145,60 @@ describe('renderTree：合并行 DOM 契约（B8）', () => {
     const row = mergedRow(root, '示例库');
     const toggle = row.querySelector<HTMLButtonElement>('.tree-dir-toggle');
     expect(toggle).not.toBeNull();
-    expect(row.lastElementChild).toBe(toggle);
+    expect(row.firstElementChild).toBe(toggle);
     expect(toggle!.getAttribute('aria-expanded')).toBe('false');
+    expect(row.querySelector('.tree-count')?.textContent).toMatch(/^\d+$/);
+    expect(row.querySelector('button.tree-dir-add')).not.toBeNull();
   });
 
-  it('箭头控制子列表显隐并回调 onToggle（不触发导航）', () => {
+  it('左侧箭头或行右侧区域统一控制子列表显隐并回调 onToggle（只有一个折叠控件）', () => {
     const onToggle = vi.fn();
     const root = renderTree(tree, { onToggle });
     const row = mergedRow(root, '示例库');
     const toggle = row.querySelector<HTMLButtonElement>('.tree-dir-toggle')!;
+    const countEl = row.querySelector<HTMLElement>('.tree-count')!;
     const list = root.querySelector<HTMLElement>(`#${CSS.escape(toggle.getAttribute('aria-controls')!)}`)!;
     expect(list.hidden).toBe(true);
+    // 篇数展示不再是第二个割裂的 button，而是整行一体点击区
+    expect(countEl.tagName).toBe('SPAN');
 
     toggle.click();
     expect(list.hidden).toBe(false);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
     expect(onToggle).toHaveBeenCalledWith('示例库', true);
 
-    toggle.click();
+    countEl.click();
     expect(list.hidden).toBe(true);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(onToggle).toHaveBeenLastCalledWith('示例库', false);
   });
 
-  it('「N 篇」徽标也是展开/收起按钮，点击与箭头等价', () => {
+  it('父文档已是当前高亮页时，再次点标题也能直接展开/收起子目录', () => {
     const onToggle = vi.fn();
-    const root = renderTree(tree, { onToggle });
+    const root = renderTree(tree, { onToggle, currentPath: '示例库', openPaths: new Set(['示例库']) });
     const row = mergedRow(root, '示例库');
-    const caret = row.querySelector<HTMLButtonElement>('.tree-dir-toggle')!;
-    const badge = row.querySelector<HTMLButtonElement>('.tree-count-btn')!;
-    expect(badge.tagName).toBe('BUTTON');
-    expect(badge.textContent).toMatch(/^\d+ 篇$/);
-    expect(badge.className).toContain('tree-count');
-
-    const listId = caret.getAttribute('aria-controls')!;
-    // 两个按钮指向同一个受控区域，初始状态一致
-    expect(badge.getAttribute('aria-controls')).toBe(listId);
-    expect(badge.getAttribute('aria-expanded')).toBe('false');
-    const list = root.querySelector<HTMLElement>(`#${CSS.escape(listId)}`)!;
-    expect(list.hidden).toBe(true);
-
-    badge.click();
+    const toggle = row.querySelector<HTMLButtonElement>('.tree-dir-toggle')!;
+    const link = row.querySelector<HTMLAnchorElement>('a.tree-doc')!;
+    const list = root.querySelector<HTMLElement>(`#${CSS.escape(toggle.getAttribute('aria-controls')!)}`)!;
     expect(list.hidden).toBe(false);
-    expect(badge.getAttribute('aria-expanded')).toBe('true');
-    expect(caret.getAttribute('aria-expanded')).toBe('true');
-    expect(onToggle).toHaveBeenCalledWith('示例库', true);
 
-    // 再用箭头收起，徽标状态也要跟着回到 false
-    caret.click();
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
     expect(list.hidden).toBe(true);
-    expect(badge.getAttribute('aria-expanded')).toBe('false');
-    expect(onToggle).toHaveBeenLastCalledWith('示例库', false);
+    expect(onToggle).toHaveBeenCalledWith('示例库', false);
   });
 
-  it('点「N 篇」徽标不会导航（徽标不是链接，也没有弹出新页面）', () => {
-    const root = renderTree(tree);
-    const badge = mergedRow(root, '示例库').querySelector<HTMLButtonElement>('.tree-count-btn')!;
+  it('点「+」新建按钮只在当前目录弹窗，不触发父行展开或导航', () => {
+    const onCreateInDir = vi.fn();
+    const onToggle = vi.fn();
+    const root = renderTree(tree, { onCreateInDir, onToggle });
+    const addBtn = mergedRow(root, '示例库').querySelector<HTMLButtonElement>('button.tree-dir-add')!;
     const click = new MouseEvent('click', { bubbles: true, cancelable: true });
-    badge.dispatchEvent(click);
-    // 徽标自己的 click 处理会 preventDefault；也未冒泡到行内的文档链接
+    addBtn.dispatchEvent(click);
     expect(click.defaultPrevented).toBe(true);
-    expect(badge.closest('a')).toBeNull();
+    expect(onCreateInDir).toHaveBeenCalledWith('示例库');
+    expect(onToggle).not.toHaveBeenCalled();
   });
 
   it('openPaths 命中时默认展开，并标记当前文档 aria-current', () => {

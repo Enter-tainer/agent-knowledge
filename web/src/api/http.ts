@@ -9,6 +9,7 @@ import {
 } from './errors';
 import type {
   BacklinksResponse,
+  DeleteResult,
   Doc,
   HealthResponse,
   LinksReport,
@@ -16,7 +17,9 @@ import type {
   OrphansResponse,
   ReindexResult,
   RenameResult,
+  ResolveLinksResult,
   SearchResponse,
+  StaleReport,
   TreeEntry,
   UpdateResult,
 } from './types';
@@ -140,6 +143,12 @@ export const httpApi: KbApi = {
     });
   },
 
+  deleteDoc(path, force = false) {
+    return json<DeleteResult>(`${docPath(path)}${force ? '?force=1' : ''}`, {
+      method: 'DELETE',
+    });
+  },
+
   rename(path, to) {
     return json<RenameResult>(`${docPath(path)}/rename`, {
       method: 'POST',
@@ -167,6 +176,14 @@ export const httpApi: KbApi = {
 
   orphans() {
     return json<OrphansResponse>('/api/reports/orphans');
+  },
+
+  reportStale() {
+    return json<StaleReport>('/api/reports/stale');
+  },
+
+  resolveLinks() {
+    return json<ResolveLinksResult>('/api/admin/resolve-links', { method: 'POST' });
   },
 
   reindex() {

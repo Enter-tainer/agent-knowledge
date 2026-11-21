@@ -1,5 +1,6 @@
 import type { KbApi } from './contract';
 import {
+  ApiError,
   ConflictError,
   NotFoundError,
   NotModifiedError,
@@ -24,6 +25,7 @@ function note(name: string): string {
 import type {
   AllLinksEntry,
   BacklinksResponse,
+  DeleteResult,
   Doc,
   HealthResponse,
   LinkRef,
@@ -32,8 +34,10 @@ import type {
   OrphansResponse,
   ReindexResult,
   RenameResult,
+  ResolveLinksResult,
   SearchHit,
   SearchResponse,
+  StaleReport,
   TreeEntry,
   UnresolvedLink,
   UpdateResult,
@@ -418,8 +422,22 @@ export const mockApi: KbApi = {
     return { path: rec.path, hash: rec.hash, revision: rec.revision };
   },
 
+  async deleteDoc(path, force = false): Promise<DeleteResult> {
+    getRecord(path);
+    const bl = backlinksOf(path).backlinks;
+    if (bl.length > 0 && !force) {
+      throw new ApiError(409, `还有 ${bl.length} 篇笔记引用了这篇文档；确认强制删除将使这些引用变为断链`);
+    }
+    records.delete(path);
+    return { path };
+  },
+
   async rename(path, to): Promise<RenameResult> {
     const rec = getRecord(path);
+    if (to === path) return { from: path, to, rewritten: 0, unresolved: 0 };
+    if (records.has(to)) {
+      throw new ApiError(409, `目标路径已存在：${to}`);
+    }
     const oldStem = lastSegment(path);
     const newStem = lastSegment(to);
     let rewritten = 0;
@@ -443,7 +461,8 @@ export const mockApi: KbApi = {
     rec.hash = hashRaw(rec.raw);
     rec.revision += 1;
     records.set(to, rec);
-    return { from: path, to, rewritten };
+    const report = await this.reportLinks(true);
+    return { from: path, to, rewritten, unresolved: 'count' in report ? report.count : 0 };
   },
 
   async search(query, limit = 10): Promise<SearchResponse> {
@@ -480,6 +499,17 @@ export const mockApi: KbApi = {
       .filter((l) => !l.resolved)
       .map(({ src, title, target, line }) => ({ src, title, target, line }));
     return { unresolved, count: unresolved.length };
+  },
+
+  async reportStale(): Promise<StaleReport> {
+    return { stale: [], count: 0 };
+  },
+
+  async resolveLinks(): Promise<ResolveLinksResult> {
+    const allReport = await this.reportLinks(false);
+    const all = 'links' in allReport ? allReport.links : [];
+    const unresolved = all.filter((l) => !l.resolved).length;
+    return { total: all.length, unresolved };
   },
 
   async reindex(): Promise<ReindexResult> {

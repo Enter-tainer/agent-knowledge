@@ -72,7 +72,7 @@ export function humanizeError(err: unknown): string {
     if (err.status === 401 || err.status === 403) return err.message;
     if (err.status === 404) return '没有找到这篇笔记，它可能已被删除或改名。';
     if (err.status === 412 || err.status === 428) return '这篇笔记在别处被改过了，请重新加载后再试。';
-    if (err.status === 409) return '操作冲突，请刷新后重试。';
+    if (err.status === 409) return err.message || '操作冲突，请刷新后重试。';
     if (err.status === 413) return '内容太大了，服务器拒绝保存。';
     if (err.status >= 500) {
       const rid = err.requestId ? `（请求 ID：${err.requestId}）` : '';

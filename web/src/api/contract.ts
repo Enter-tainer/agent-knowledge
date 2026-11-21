@@ -1,5 +1,6 @@
 import type {
   BacklinksResponse,
+  DeleteResult,
   Doc,
   HealthResponse,
   LinksReport,
@@ -7,7 +8,9 @@ import type {
   LinksResponse,
   OrphansResponse,
   RenameResult,
+  ResolveLinksResult,
   SearchResponse,
+  StaleReport,
   TreeEntry,
   UpdateResult,
 } from './types';
@@ -30,6 +33,7 @@ export interface KbApi {
    * - `If-Match: '*'` 只用于新建。
    */
   putDoc(path: string, raw: string, ifMatch: string): Promise<UpdateResult>;
+  deleteDoc(path: string, force?: boolean): Promise<DeleteResult>;
   rename(path: string, to: string): Promise<RenameResult>;
   search(query: string, limit?: number): Promise<SearchResponse>;
   backlinks(path: string): Promise<BacklinksResponse>;
@@ -37,6 +41,9 @@ export interface KbApi {
   /** 传 true → `?unresolved=1`（断链报告）；不传 → 全量链接明细。 */
   reportLinks(unresolvedOnly?: boolean): Promise<LinksReport>;
   orphans(): Promise<OrphansResponse>;
+  reportStale(): Promise<StaleReport>;
+  /** POST /api/admin/resolve-links：全库重解析双链。 */
+  resolveLinks(): Promise<ResolveLinksResult>;
   /** POST /api/admin/reindex：重建检索索引，返回 stale（应 0）。 */
   reindex(): Promise<ReindexResult>;
   exportZip(): Promise<Blob>;

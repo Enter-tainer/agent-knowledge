@@ -1,4 +1,5 @@
 import 'highlight.js/styles/github.css';
+import 'katex/dist/katex.min.css';
 import './styles/app.css';
 
 import { api, IS_MOCK } from './api';
@@ -9,15 +10,16 @@ import { renderHome } from './pages/home';
 import { renderReports } from './pages/reports';
 import { renderSearch } from './pages/search';
 import { parseRoute, startRouter, type Route } from './router';
+import { mountGlobalCommandPalette } from './ui/commandPalette';
 import { el } from './ui/dom';
 import { layout } from './ui/layout';
 import { runPageTeardown } from './ui/lifecycle';
 import { createSidebar } from './ui/sidebar';
+import { initTheme } from './ui/theme';
 import type { NavInfo, PageView } from './ui/view';
 
 let renderSeq = 0;
 
-/** 未知路由也套持久 shell（有搜索框与侧边栏），不要只有一个「回首页」。 */
 function notFoundView(): PageView {
   return {
     active: 'home',
@@ -32,7 +34,7 @@ function notFoundView(): PageView {
         el('h1', { class: 'doc-title', text: '页面不存在' }),
         el('p', {
           class: 'notfound-text',
-          text: '这个地址没有对应的页面。可以用顶部搜索找笔记，或回目录。',
+          text: '这个地址没有对应的页面。可以用顶部搜索或 ⌘K 找笔记，或回目录。',
         }),
         el('div', { class: 'notfound-actions' }, el('a', { class: 'btn btn-primary', href: '/', text: '回目录' })),
       ),
@@ -76,23 +78,18 @@ async function render(nav: NavInfo): Promise<void> {
   }
 }
 
-/**
- * 启动时间戳，供端到端脚本证明「全程只有一次文档加载」。
- *
- * 必须在 `mount()` 之前写：E2E 的 A1 断言读它，若它随首屏渲染一起出现，
- * 断言就变成「null === null」的恒真式（三轮审查都点过这个假绿）。
- */
 interface BootProbeWindow extends Window {
   __kbBootAt?: number;
 }
 (window as BootProbeWindow).__kbBootAt = Date.now();
 
+initTheme();
 const sidebar = createSidebar();
 layout.mount({ sidebar });
+mountGlobalCommandPalette();
 layout.showBoot();
 startRouter((nav) => void render(nav));
 
-// 仅 dev：暴露 API 客户端，方便在控制台模拟「别人改过文件」验证冲突流程；build 时这段会被剔除。
 if (import.meta.env.DEV) {
   (window as unknown as Record<string, unknown>).__kb = { api, isMock: IS_MOCK };
 }

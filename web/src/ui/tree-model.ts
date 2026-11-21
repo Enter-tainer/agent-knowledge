@@ -177,3 +177,42 @@ export function findDoc(nodes: TreeNode[], path: string): TreeNode | null {
   }
   return null;
 }
+
+/** 按关键词过滤目录树：保留命中笔记及命中目录的子树，其余剪枝。 */
+export function filterTree(nodes: TreeNode[], rawQuery: string): TreeNode[] {
+  const q = rawQuery.trim().toLowerCase();
+  if (!q) return nodes;
+  const terms = q.split(/\s+/).filter(Boolean);
+
+  const matchesSelf = (node: TreeNode): boolean => {
+    const title = node.doc?.title ?? '';
+    const tags = node.doc?.tags?.join(' ') ?? '';
+    const hay = `${node.name} ${node.path} ${title} ${tags}`.toLowerCase();
+    return terms.every((t) => hay.includes(t));
+  };
+
+  const visit = (list: TreeNode[]): TreeNode[] => {
+    const out: TreeNode[] = [];
+    for (const node of list) {
+      if (node.kind === 'doc') {
+        if (matchesSelf(node)) out.push(node);
+        continue;
+      }
+      const selfMatched = matchesSelf(node);
+      if (selfMatched) {
+        out.push(node);
+        continue;
+      }
+      const filteredChildren = visit(node.children);
+      if (filteredChildren.length > 0) {
+        out.push({
+          ...node,
+          children: filteredChildren,
+        });
+      }
+    }
+    return out;
+  };
+
+  return visit(nodes);
+}

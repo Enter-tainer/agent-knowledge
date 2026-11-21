@@ -42,6 +42,14 @@ $note = "pwsh 也要能高亮"
 $note.ToUpper()
 ```
 
+## 数学公式
+
+支持行内公式如 $E = mc^2$ 与 $\alpha + \beta = \gamma$，以及块级公式：
+
+$$
+\text{relevance}(q, d) = -\text{BM25}(q, d) = \sum_{t \in q} \text{IDF}(t) \cdot \frac{f(t, d) \cdot (k_1 + 1)}{f(t, d) + k_1 \cdot \left(1 - b + b \cdot \frac{|d|}{\text{avgdl}}\right)}
+$$
+
 ## 相关页面
 
 - [[示例设备 B 逆向]]
